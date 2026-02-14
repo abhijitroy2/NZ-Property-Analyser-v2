@@ -1,0 +1,302 @@
+"""
+AI Vision API Service.
+Analyzes property listing photos to assess renovation needs.
+Supports OpenAI GPT-4V, Anthropic Claude Vision, or mock mode.
+"""
+
+import json
+import logging
+import base64
+from typing import Dict, Any, List, Optional
+
+import requests
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+ANALYSIS_PROMPT = """Analyze this property listing photo and assess its condition. Return a JSON object with the following fields:
+
+{
+  "photo_type": "exterior" | "interior" | "kitchen" | "bathroom" | "roof" | "garden" | "other",
+  "condition_rating": 1-10 (1=derelict, 10=brand new),
+  "observations": ["list of key observations"],
+  "issues_detected": ["list of any problems or concerns"],
+  "estimated_age": "approximate age description (e.g., '1960s bungalow', 'modern 2010s')",
+  "renovation_indicators": {
+    "needs_paint": true/false,
+    "dated_fixtures": true/false,
+    "structural_concerns": true/false,
+    "moisture_damage": true/false,
+    "roof_issues": true/false,
+    "needs_kitchen_update": true/false,
+    "needs_bathroom_update": true/false
+  }
+}
+
+Be specific and practical in your assessment. Focus on renovation-relevant details."""
+
+SUMMARY_PROMPT = """Based on these individual photo analyses of a property listing, provide an overall renovation assessment. Return a JSON object:
+
+{
+  "roof_condition": "NEW_IRON" | "OLD_IRON" | "TILES" | "NEEDS_REPLACE" | "UNKNOWN",
+  "exterior_condition": "EXCELLENT" | "GOOD" | "FAIR" | "POOR",
+  "interior_quality": "MODERN" | "DATED" | "VERY_DATED" | "DERELICT",
+  "kitchen_age": "0-5yr" | "5-10yr" | "10-20yr" | "20+yr" | "UNKNOWN",
+  "bathroom_age": "0-5yr" | "5-10yr" | "10-20yr" | "20+yr" | "UNKNOWN",
+  "structural_concerns": ["list of visible structural issues"],
+  "overall_reno_level": "COSMETIC" | "MODERATE" | "MAJOR" | "FULL_GUT",
+  "key_renovation_items": ["list of main renovation tasks needed"],
+  "confidence": "HIGH" | "MEDIUM" | "LOW"
+}
+
+Individual photo analyses:
+"""
+
+
+class VisionAPIClient:
+    """AI Vision client for property photo analysis."""
+
+    def __init__(self):
+        self.provider = settings.vision_provider
+
+    def analyze_listing_photos(self, photos: List[str]) -> Dict[str, Any]:
+        """
+        Analyze property listing photos and return renovation assessment.
+        
+        Args:
+            photos: List of photo URLs.
+        
+        Returns:
+            Dict with overall renovation assessment.
+        """
+        if not photos:
+            return self._default_analysis()
+
+        if self.provider == "mock":
+            return self._mock_analysis(photos)
+
+        # Analyze individual photos (limit to 6 to manage costs)
+        photos_to_analyze = photos[:6]
+        individual_analyses = []
+
+        for photo_url in photos_to_analyze:
+            try:
+                analysis = self._analyze_single_photo(photo_url)
+                if analysis:
+                    individual_analyses.append(analysis)
+            except Exception as e:
+                logger.warning(f"Failed to analyze photo {photo_url}: {e}")
+
+        if not individual_analyses:
+            return self._default_analysis()
+
+        # Get overall summary from individual analyses
+        summary = self._get_summary(individual_analyses)
+        return summary
+
+    def _analyze_single_photo(self, photo_url: str) -> Optional[Dict[str, Any]]:
+        """Analyze a single photo using the configured AI vision provider."""
+        if self.provider == "openai":
+            return self._analyze_openai(photo_url)
+        elif self.provider == "anthropic":
+            return self._analyze_anthropic(photo_url)
+        return None
+
+    def _analyze_openai(self, photo_url: str) -> Optional[Dict[str, Any]]:
+        """Analyze photo using OpenAI GPT-4 Vision."""
+        try:
+            import openai
+            client = openai.OpenAI(api_key=settings.openai_api_key)
+
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": ANALYSIS_PROMPT},
+                            {"type": "image_url", "image_url": {"url": photo_url}},
+                        ],
+                    }
+                ],
+                max_tokens=500,
+                response_format={"type": "json_object"},
+            )
+
+            text = response.choices[0].message.content
+            return json.loads(text)
+        except Exception as e:
+            logger.warning(f"OpenAI vision analysis failed: {e}")
+            return None
+
+    def _analyze_anthropic(self, photo_url: str) -> Optional[Dict[str, Any]]:
+        """Analyze photo using Anthropic Claude Vision."""
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+            # Download image and convert to base64
+            resp = requests.get(photo_url, timeout=15)
+            resp.raise_for_status()
+            img_data = base64.standard_b64encode(resp.content).decode("utf-8")
+            media_type = resp.headers.get("content-type", "image/jpeg")
+
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=500,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": img_data,
+                                },
+                            },
+                            {"type": "text", "text": ANALYSIS_PROMPT + "\n\nReturn only valid JSON."},
+                        ],
+                    }
+                ],
+            )
+
+            text = response.content[0].text
+            # Try to extract JSON from response
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                return json.loads(text[start:end])
+        except Exception as e:
+            logger.warning(f"Anthropic vision analysis failed: {e}")
+        return None
+
+    def _get_summary(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get overall summary from individual photo analyses."""
+        if self.provider == "openai":
+            return self._summarize_openai(analyses)
+        elif self.provider == "anthropic":
+            return self._summarize_anthropic(analyses)
+        return self._summarize_heuristic(analyses)
+
+    def _summarize_openai(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Use OpenAI to summarize individual analyses."""
+        try:
+            import openai
+            client = openai.OpenAI(api_key=settings.openai_api_key)
+
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": SUMMARY_PROMPT + json.dumps(analyses, indent=2),
+                    }
+                ],
+                max_tokens=600,
+                response_format={"type": "json_object"},
+            )
+
+            text = response.choices[0].message.content
+            return json.loads(text)
+        except Exception as e:
+            logger.warning(f"OpenAI summary failed: {e}")
+            return self._summarize_heuristic(analyses)
+
+    def _summarize_anthropic(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Use Anthropic to summarize individual analyses."""
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=600,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": SUMMARY_PROMPT + json.dumps(analyses, indent=2) + "\n\nReturn only valid JSON.",
+                    }
+                ],
+            )
+
+            text = response.content[0].text
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                return json.loads(text[start:end])
+        except Exception as e:
+            logger.warning(f"Anthropic summary failed: {e}")
+        return self._summarize_heuristic(analyses)
+
+    def _summarize_heuristic(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Heuristic-based summary from individual analyses when AI unavailable."""
+        avg_rating = sum(a.get("condition_rating", 5) for a in analyses) / len(analyses) if analyses else 5
+
+        all_issues = []
+        reno_indicators = {}
+        for a in analyses:
+            all_issues.extend(a.get("issues_detected", []))
+            for k, v in a.get("renovation_indicators", {}).items():
+                if v:
+                    reno_indicators[k] = True
+
+        # Map average rating to renovation level
+        if avg_rating >= 8:
+            reno_level = "COSMETIC"
+        elif avg_rating >= 6:
+            reno_level = "MODERATE"
+        elif avg_rating >= 4:
+            reno_level = "MAJOR"
+        else:
+            reno_level = "FULL_GUT"
+
+        return {
+            "roof_condition": "UNKNOWN",
+            "exterior_condition": "GOOD" if avg_rating >= 6 else "FAIR" if avg_rating >= 4 else "POOR",
+            "interior_quality": "MODERN" if avg_rating >= 8 else "DATED" if avg_rating >= 5 else "VERY_DATED",
+            "kitchen_age": "UNKNOWN",
+            "bathroom_age": "UNKNOWN",
+            "structural_concerns": list(set(all_issues))[:5],
+            "overall_reno_level": reno_level,
+            "key_renovation_items": list(reno_indicators.keys()),
+            "confidence": "LOW",
+        }
+
+    def _mock_analysis(self, photos: List[str]) -> Dict[str, Any]:
+        """Conservative mock analysis when no vision API is configured."""
+        return {
+            "roof_condition": "UNKNOWN",
+            "exterior_condition": "FAIR",
+            "interior_quality": "DATED",
+            "kitchen_age": "10-20yr",
+            "bathroom_age": "10-20yr",
+            "structural_concerns": [],
+            "overall_reno_level": "MODERATE",
+            "key_renovation_items": [
+                "Paint interior/exterior",
+                "Kitchen refresh",
+                "Bathroom update",
+                "Floor coverings",
+            ],
+            "confidence": "LOW",
+            "source": "mock_default",
+            "note": "Set VISION_PROVIDER in .env for AI-powered analysis",
+        }
+
+    def _default_analysis(self) -> Dict[str, Any]:
+        """Default when no photos available."""
+        return {
+            "roof_condition": "UNKNOWN",
+            "exterior_condition": "UNKNOWN",
+            "interior_quality": "UNKNOWN",
+            "kitchen_age": "UNKNOWN",
+            "bathroom_age": "UNKNOWN",
+            "structural_concerns": [],
+            "overall_reno_level": "MODERATE",
+            "key_renovation_items": [],
+            "confidence": "LOW",
+            "source": "no_photos",
+        }
