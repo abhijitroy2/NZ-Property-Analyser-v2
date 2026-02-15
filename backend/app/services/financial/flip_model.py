@@ -46,7 +46,7 @@ def calculate_flip_financials(
     # Holding costs
     timeline_months = timeline_weeks / 4.33
     interest_rate = interest_rate_override if interest_rate_override is not None else 0.054  # 5.4%
-    interest_cost = purchase_price * interest_rate * (timeline_months / 12)
+    interest_cost = (purchase_price + reno_cost) * interest_rate * (timeline_months / 12)
 
     # Insurance during hold
     insurance = 1000 * (timeline_months / 12)

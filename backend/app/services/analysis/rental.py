@@ -61,14 +61,16 @@ def estimate_rental_income(
         weekly_rent = _estimate_from_bedrooms(bedrooms, suburb, region)
         source = "bedroom_estimate"
 
-    # Calculate yields
-    annual_rent = weekly_rent * 52
-    gross_yield = (annual_rent / purchase_price * 100) if purchase_price > 0 else 0
+    # Indicative yield based on purchase price only (pre-renovation).
+    # The definitive yield calculation lives in rental_model.py and uses
+    # total_invested (purchase + costs + renovation).
+    annual_rent = weekly_rent * 50  # 50 weeks to match rental_model vacancy assumption
+    indicative_yield = (annual_rent / purchase_price * 100) if purchase_price > 0 else 0
 
     return {
         "estimated_weekly_rent": round(weekly_rent, 2),
         "annual_rent": round(annual_rent, 2),
-        "gross_yield_percentage": round(gross_yield, 2),
+        "indicative_yield_percentage": round(indicative_yield, 2),
         "bond_samples": tenancy_data.get("bond_samples", 0),
         "trademe_estimate": tm_rent,
         "tenancy_estimate": tenancy_rent,
