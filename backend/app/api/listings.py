@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 from typing import Optional, List
 
 from app.database import get_db
@@ -25,7 +25,7 @@ def get_listings(
     db: Session = Depends(get_db),
 ):
     """Get paginated, filtered list of property listings."""
-    query = db.query(Listing)
+    query = db.query(Listing).outerjoin(Listing.analysis).options(contains_eager(Listing.analysis))
 
     # Apply filters
     if filter_status:
@@ -36,22 +36,16 @@ def get_listings(
         query = query.filter(Listing.bedrooms >= min_bedrooms)
     if region:
         query = query.filter(Listing.region == region)
-
-    # Join with analysis for score/verdict filters
-    if verdict or min_score or sort_by == "composite_score":
-        query = query.outerjoin(Analysis)
-        if verdict:
-            query = query.filter(Analysis.verdict == verdict)
-        if min_score:
-            query = query.filter(Analysis.composite_score >= min_score)
+    if verdict:
+        query = query.filter(Analysis.verdict == verdict)
+    if min_score:
+        query = query.filter(Analysis.composite_score >= min_score)
 
     # Count total
     total = query.count()
 
     # Sorting
     if sort_by == "composite_score":
-        order_col = Analysis.composite_score if sort_order == "desc" else Analysis.composite_score
-        query = query.outerjoin(Analysis) if not (verdict or min_score) else query
         query = query.order_by(Analysis.composite_score.desc() if sort_order == "desc" else Analysis.composite_score.asc())
     elif sort_by == "asking_price":
         query = query.order_by(Listing.asking_price.desc() if sort_order == "desc" else Listing.asking_price.asc())

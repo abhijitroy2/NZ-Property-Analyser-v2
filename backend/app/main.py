@@ -1,9 +1,20 @@
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
 from app.api import listings, analysis, dashboard, watchlist, portfolio, pipeline
+
+# Configure logging so all loggers output to console
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    stream=sys.stdout,
+)
+logging.getLogger("app").setLevel(logging.DEBUG)
 
 app = FastAPI(
     title="NZ Property Finder",

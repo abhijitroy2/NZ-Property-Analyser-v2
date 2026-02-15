@@ -376,46 +376,55 @@ class TradeMeScraper:
         if not listing_id:
             return None
 
-        # Check if exists
-        existing = self.db.query(Listing).filter(Listing.listing_id == listing_id).first()
+        try:
+            # Check if exists
+            existing = self.db.query(Listing).filter(Listing.listing_id == listing_id).first()
 
-        if existing:
-            # Update existing
-            for key, value in details.items():
-                if key != "listing_id" and hasattr(existing, key) and value:
-                    setattr(existing, key, value)
-            existing.source_url = source_url
+            if existing:
+                # Update existing
+                for key, value in details.items():
+                    if key != "listing_id" and hasattr(existing, key) and value:
+                        setattr(existing, key, value)
+                existing.source_url = source_url
+                self.db.flush()
+                return existing
+            else:
+                # Create new
+                db_listing = Listing(
+                    listing_id=listing_id,
+                    title=details.get("title", ""),
+                    address=details.get("address", ""),
+                    full_address=details.get("full_address", ""),
+                    suburb=details.get("suburb", ""),
+                    district=details.get("district", ""),
+                    region=details.get("region", ""),
+                    geographic_location=details.get("geographic_location", ""),
+                    bedrooms=details.get("bedrooms"),
+                    bathrooms=details.get("bathrooms"),
+                    land_area=details.get("land_area"),
+                    floor_area=details.get("floor_area"),
+                    capital_value=details.get("capital_value", ""),
+                    property_type=details.get("property_type", ""),
+                    title_type=details.get("title_type", ""),
+                    display_price=details.get("display_price", ""),
+                    asking_price=details.get("asking_price"),
+                    estimated_market_price=details.get("estimated_market_price", ""),
+                    estimated_weekly_rent=details.get("estimated_weekly_rent", ""),
+                    description=details.get("description", ""),
+                    property_url=details.get("property_url", ""),
+                    photos=details.get("photos", []),
+                    nearby_properties=details.get("nearby_properties", []),
+                    listing_date=details.get("listing_date"),
+                    source_url=source_url,
+                    filter_status="pending",
+                    analysis_status="pending",
+                )
+                self.db.add(db_listing)
+                self.db.flush()
+                return db_listing
+        except Exception as e:
+            logger.warning(f"Failed to store listing {listing_id}: {e}")
+            self.db.rollback()
+            # Try to return existing after rollback
+            existing = self.db.query(Listing).filter(Listing.listing_id == listing_id).first()
             return existing
-        else:
-            # Create new
-            db_listing = Listing(
-                listing_id=listing_id,
-                title=details.get("title", ""),
-                address=details.get("address", ""),
-                full_address=details.get("full_address", ""),
-                suburb=details.get("suburb", ""),
-                district=details.get("district", ""),
-                region=details.get("region", ""),
-                geographic_location=details.get("geographic_location", ""),
-                bedrooms=details.get("bedrooms"),
-                bathrooms=details.get("bathrooms"),
-                land_area=details.get("land_area"),
-                floor_area=details.get("floor_area"),
-                capital_value=details.get("capital_value", ""),
-                property_type=details.get("property_type", ""),
-                title_type=details.get("title_type", ""),
-                display_price=details.get("display_price", ""),
-                asking_price=details.get("asking_price"),
-                estimated_market_price=details.get("estimated_market_price", ""),
-                estimated_weekly_rent=details.get("estimated_weekly_rent", ""),
-                description=details.get("description", ""),
-                property_url=details.get("property_url", ""),
-                photos=details.get("photos", []),
-                nearby_properties=details.get("nearby_properties", []),
-                listing_date=details.get("listing_date"),
-                source_url=source_url,
-                filter_status="pending",
-                analysis_status="pending",
-            )
-            self.db.add(db_listing)
-            return db_listing
