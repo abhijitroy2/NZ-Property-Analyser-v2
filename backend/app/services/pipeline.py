@@ -61,11 +61,19 @@ class PropertyPipeline:
         logger.info("=== Pipeline complete ===")
 
     def scrape_new_listings(self):
-        """Pull new listings from TradeMe."""
-        search_urls = settings.search_urls
+        """Pull new listings from TradeMe. Reads URLs from DB, falls back to .env."""
+        from app.api.settings import get_active_search_urls, _sync_to_scraper_input
+        from app.models.search_url import SearchURL
+
+        search_urls = get_active_search_urls(self.db)
         if not search_urls:
-            logger.warning("No search URLs configured. Set TRADEME_SEARCH_URLS in .env")
+            logger.warning("No search URLs configured. Add URLs in Settings or set TRADEME_SEARCH_URLS in .env")
             return
+
+        # Sync enabled URLs to TM-scraper-1 input.txt before scraping
+        db_urls = self.db.query(SearchURL).filter(SearchURL.enabled == True).all()
+        if db_urls:
+            _sync_to_scraper_input(db_urls)
 
         total_new = 0
         for url in search_urls:

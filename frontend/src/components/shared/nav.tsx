@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useState, useRef, useEffect } from "react";
 import {
   LayoutDashboard,
   Building2,
@@ -70,29 +71,73 @@ export function Nav() {
 }
 
 function PipelineButton() {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [running, setRunning] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const handleRun = async () => {
+    if (running) return;
+    setRunning(true);
+    setShowTooltip(false);
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/pipeline/run`,
         { method: "POST" }
       );
       if (res.ok) {
-        alert("Pipeline started! Check back in a few minutes for results.");
+        alert("Pipeline started! This scrapes TradeMe, filters, analyzes, and scores all properties. Check back in a few minutes for results.");
       } else {
         alert("Failed to start pipeline. Is the backend running?");
       }
     } catch {
       alert("Cannot reach backend. Make sure the API server is running on port 8000.");
+    } finally {
+      setRunning(false);
     }
   };
 
+  const handleMouseEnter = () => {
+    timeoutRef.current = setTimeout(() => setShowTooltip(true), 400);
+  };
+
+  const handleMouseLeave = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setShowTooltip(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
   return (
-    <button
-      onClick={handleRun}
-      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-    >
-      <Play className="h-4 w-4" />
-      <span className="hidden sm:inline">Run Pipeline</span>
-    </button>
+    <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <button
+        onClick={handleRun}
+        disabled={running}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+      >
+        {running ? (
+          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <Play className="h-4 w-4" />
+        )}
+        <span className="hidden sm:inline">{running ? "Running..." : "Run Pipeline"}</span>
+      </button>
+
+      {showTooltip && !running && (
+        <div className="absolute right-0 top-full mt-2 w-72 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg z-50 text-xs text-[var(--foreground)]">
+          <p className="font-semibold mb-2 text-sm">Full Analysis Pipeline</p>
+          <ol className="space-y-1.5 list-decimal list-inside text-[var(--muted-foreground)]">
+            <li><span className="font-medium text-[var(--foreground)]">Scrape</span> — Fetches listings from TradeMe using configured search URLs</li>
+            <li><span className="font-medium text-[var(--foreground)]">Filter</span> — Applies hard filters (price, title type, population, property type)</li>
+            <li><span className="font-medium text-[var(--foreground)]">Analyze</span> — Runs deep analysis: renovation cost, ARV, rental income, insurability, subdivision potential</li>
+            <li><span className="font-medium text-[var(--foreground)]">Score &amp; Rank</span> — Calculates composite scores &amp; assigns verdicts (BUY / MAYBE / PASS)</li>
+          </ol>
+          <p className="mt-2 text-[var(--muted-foreground)] italic">Takes a few minutes depending on listing count.</p>
+        </div>
+      )}
+    </div>
   );
 }

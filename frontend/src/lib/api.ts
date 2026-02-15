@@ -68,6 +68,40 @@ export async function getStatsByRegion(): Promise<any[]> {
   return fetchAPI(`/dashboard/stats-by-region`);
 }
 
+// ===== Settings / Search URLs =====
+export interface SearchURLItem {
+  id?: number;
+  url: string;
+  label: string;
+  enabled: boolean;
+}
+
+export async function getSearchURLs(): Promise<{ urls: SearchURLItem[] }> {
+  return fetchAPI(`/settings/search-urls`);
+}
+
+export async function updateSearchURLs(urls: SearchURLItem[]): Promise<{ urls: SearchURLItem[] }> {
+  return fetchAPI(`/settings/search-urls`, {
+    method: "PUT",
+    body: JSON.stringify({ urls }),
+  });
+}
+
+export async function addSearchURL(item: SearchURLItem): Promise<SearchURLItem> {
+  return fetchAPI(`/settings/search-urls/add`, {
+    method: "POST",
+    body: JSON.stringify(item),
+  });
+}
+
+export async function deleteSearchURL(id: number): Promise<void> {
+  return fetchAPI(`/settings/search-urls/${id}`, { method: "DELETE" });
+}
+
+export async function toggleSearchURL(id: number): Promise<{ enabled: boolean }> {
+  return fetchAPI(`/settings/search-urls/${id}/toggle`, { method: "PATCH" });
+}
+
 // ===== Pipeline =====
 export async function runPipeline(): Promise<{ status: string; message: string }> {
   return fetchAPI(`/pipeline/run`, { method: "POST" });

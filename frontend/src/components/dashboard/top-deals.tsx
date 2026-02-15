@@ -115,15 +115,18 @@ export function TopDeals({ deals }: TopDealsProps) {
                   {deal.timeline_weeks}w
                 </span>
               )}
-              <a
-                href={deal.property_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto text-[var(--primary)] hover:underline flex items-center gap-1"
-                onClick={(e) => e.stopPropagation()}
+              <span
+                role="link"
+                tabIndex={0}
+                className="ml-auto text-[var(--primary)] hover:underline flex items-center gap-1 cursor-pointer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(deal.property_url, "_blank", "noopener,noreferrer");
+                }}
               >
                 TradeMe <ExternalLink className="h-3 w-3" />
-              </a>
+              </span>
             </div>
           </Link>
         ))}
