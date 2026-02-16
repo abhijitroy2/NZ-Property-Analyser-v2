@@ -1,0 +1,97 @@
+{
+  "auckland": {
+    "Single House": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "controlled", "notes": "Auckland Unitary Plan"},
+    "Mixed Housing Suburban": {"min_lot_sqm": 400, "avg_lot_sqm": 400, "consent_type": "permitted", "notes": ""},
+    "Mixed Housing Urban": {"min_lot_sqm": 300, "avg_lot_sqm": 300, "consent_type": "permitted", "notes": ""},
+    "Terrace Housing and Apartment Buildings": {"min_lot_sqm": 200, "avg_lot_sqm": 200, "consent_type": "permitted", "notes": ""},
+    "Large Lot Residential": {"min_lot_sqm": 2000, "avg_lot_sqm": 4000, "consent_type": "controlled", "notes": ""},
+    "Rural": {"min_lot_sqm": 4000, "avg_lot_sqm": 10000, "consent_type": "restricted_discretionary", "notes": ""},
+    "default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Fallback - verify with council"}
+  },
+  "wellington_city": {
+    "Residential": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Wellington District Plan"},
+    "High Density Residential": {"min_lot_sqm": 300, "avg_lot_sqm": 350, "consent_type": "permitted", "notes": ""},
+    "Medium Density Residential": {"min_lot_sqm": 400, "avg_lot_sqm": 450, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "hamilton_city": {
+    "Residential Zone": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "tauranga_city": {
+    "Residential": {"min_lot_sqm": 400, "avg_lot_sqm": 450, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 400, "avg_lot_sqm": 450, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "christchurch_city": {
+    "Residential Suburban": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": ""},
+    "Residential Medium Density": {"min_lot_sqm": 300, "avg_lot_sqm": 350, "consent_type": "permitted", "notes": ""},
+    "default": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "hastings": {
+    "Residential": {"min_lot_sqm": 500, "avg_lot_sqm": 550, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 500, "avg_lot_sqm": 550, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "palmerston_north": {
+    "Residential": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "new_plymouth": {
+    "Residential": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "queenstown_lakes": {
+    "Residential": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 450, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "dunedin_city": {
+    "Residential": {"min_lot_sqm": 400, "avg_lot_sqm": 450, "consent_type": "controlled", "notes": ""},
+    "default": {"min_lot_sqm": 400, "avg_lot_sqm": 450, "consent_type": "controlled", "notes": "Fallback"}
+  },
+  "far_north": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default - verify with council"}},
+  "whangarei": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "kaipara": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "thames_coromandel": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "hauraki": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "waikato": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "matamata_piako": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "waipa": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "south_waikato": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "otorohanga": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "waitomo": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "taupo": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "western_bay_of_plenty": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "kawerau": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "opotiki": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "whakatane": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "rotorua": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "gisborne": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "wairoa": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "central_hawkes_bay": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "napier_city": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "stratford": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "south_taranaki": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "ruapehu": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "whanganui": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "rangitikei": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "manawatu": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "tararua": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "horowhenua": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "kapiti_coast": {"default": {"min_lot_sqm": 550, "avg_lot_sqm": 550, "consent_type": "controlled", "notes": "Default"}},
+  "porirua": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "upper_hutt": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "hutt_city": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "masterton": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "carterton": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "south_wairarapa": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "ashburton": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "hurunui": {"default": {"min_lot_sqm": 8000, "avg_lot_sqm": 10000, "consent_type": "restricted_discretionary", "notes": "Rural"}},
+  "kaikoura": {"default": {"min_lot_sqm": 8000, "avg_lot_sqm": 10000, "consent_type": "restricted_discretionary", "notes": "Rural"}},
+  "mackenzie": {"default": {"min_lot_sqm": 8000, "avg_lot_sqm": 10000, "consent_type": "restricted_discretionary", "notes": "Rural"}},
+  "selwyn": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "timaru": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "waimakariri": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "waimate": {"default": {"min_lot_sqm": 8000, "avg_lot_sqm": 10000, "consent_type": "restricted_discretionary", "notes": "Rural"}},
+  "waitaki": {"default": {"min_lot_sqm": 500, "avg_lot_sqm": 500, "consent_type": "controlled", "notes": "Default"}},
+  "clutha": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}},
+  "central_otago": {"default": {"min_lot_sqm": 600, "avg_lot_sqm": 600, "consent_type": "discretionary", "notes": "Default"}}
+}

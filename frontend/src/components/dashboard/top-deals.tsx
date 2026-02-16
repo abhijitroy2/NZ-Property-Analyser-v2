@@ -99,10 +99,22 @@ export function TopDeals({ deals }: TopDealsProps) {
             </div>
 
             {/* Metrics row */}
-            <div className="flex items-center gap-4 mt-3 text-xs">
+            <div className="flex items-center gap-4 mt-3 text-xs flex-wrap">
               <span className="px-2 py-1 rounded bg-[var(--muted)] font-medium">
                 {strategyLabel(deal.recommended_strategy)}
               </span>
+              {deal.vision_source && (
+                <span
+                  className={`px-2 py-1 rounded font-medium ${
+                    deal.vision_source.startsWith("Mock") || deal.vision_source === "No photos"
+                      ? "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
+                      : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200"
+                  }`}
+                  title={deal.vision_confidence ? `Confidence: ${deal.vision_confidence}` : undefined}
+                >
+                  Vision: {deal.vision_source}
+                </span>
+              )}
               <span>
                 Flip ROI: <strong>{formatPercent(deal.flip_roi)}</strong>
               </span>

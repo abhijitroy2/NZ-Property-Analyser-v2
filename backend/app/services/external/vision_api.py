@@ -1,11 +1,12 @@
 """
 AI Vision API Service.
 Analyzes property listing photos to assess renovation needs.
-Supports OpenAI GPT-4V, Anthropic Claude Vision, or mock mode.
+Supports OpenAI GPT-4V, Anthropic Claude Vision, Google Cloud Vision, or mock mode.
 """
 
 import json
 import logging
+import os
 import base64
 from typing import Dict, Any, List, Optional
 
@@ -59,6 +60,22 @@ class VisionAPIClient:
 
     def __init__(self):
         self.provider = settings.vision_provider
+        self._google_client = None
+
+        # Set up Google Vision credentials if configured
+        if self.provider == "google":
+            cred_path = settings.google_vision_credentials
+            if cred_path:
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
+                logger.info(f"Google Vision credentials set from: {cred_path}")
+            try:
+                from google.cloud import vision
+                self._google_client = vision.ImageAnnotatorClient()
+                logger.info("Google Cloud Vision client initialised successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialise Google Vision client: {e}")
+                logger.warning("Falling back to mock provider")
+                self.provider = "mock"
 
     def analyze_listing_photos(self, photos: List[str]) -> Dict[str, Any]:
         """
@@ -101,6 +118,8 @@ class VisionAPIClient:
             return self._analyze_openai(photo_url)
         elif self.provider == "anthropic":
             return self._analyze_anthropic(photo_url)
+        elif self.provider == "google":
+            return self._analyze_google(photo_url)
         return None
 
     def _analyze_openai(self, photo_url: str) -> Optional[Dict[str, Any]]:
@@ -173,12 +192,188 @@ class VisionAPIClient:
             logger.warning(f"Anthropic vision analysis failed: {e}")
         return None
 
+    def _analyze_google(self, photo_url: str) -> Optional[Dict[str, Any]]:
+        """Analyze photo using Google Cloud Vision API."""
+        try:
+            from google.cloud import vision
+
+            # Build image source from URL
+            image = vision.Image()
+            image.source = vision.ImageSource(image_uri=photo_url)
+
+            # Run multiple detection types in parallel
+            features = [
+                vision.Feature(type_=vision.Feature.Type.LABEL_DETECTION, max_results=20),
+                vision.Feature(type_=vision.Feature.Type.OBJECT_LOCALIZATION, max_results=15),
+                vision.Feature(type_=vision.Feature.Type.IMAGE_PROPERTIES),
+            ]
+            request = vision.AnnotateImageRequest(image=image, features=features)
+            response = self._google_client.annotate_image(request=request)
+
+            if response.error.message:
+                logger.warning(f"Google Vision API error: {response.error.message}")
+                return None
+
+            # Extract labels and objects
+            labels = [label.description.lower() for label in response.label_annotations]
+            label_scores = {
+                label.description.lower(): label.score
+                for label in response.label_annotations
+            }
+            objects = [obj.name.lower() for obj in response.localized_object_annotations]
+
+            all_detected = set(labels + objects)
+            logger.debug(f"Google Vision detected: labels={labels}, objects={objects}")
+
+            # --- Map detections to our renovation schema ---
+            photo_type = self._google_classify_photo_type(all_detected)
+            condition_rating = self._google_estimate_condition(labels, label_scores)
+            observations = self._google_build_observations(labels, objects)
+            issues = self._google_detect_issues(all_detected)
+            reno_indicators = self._google_renovation_indicators(all_detected)
+
+            return {
+                "photo_type": photo_type,
+                "condition_rating": condition_rating,
+                "observations": observations[:8],
+                "issues_detected": issues,
+                "estimated_age": self._google_estimate_age(all_detected),
+                "renovation_indicators": reno_indicators,
+                "source": "google_vision",
+            }
+        except Exception as e:
+            logger.warning(f"Google Vision analysis failed: {e}")
+            return None
+
+    # ---------- Google Vision helper methods ----------
+
+    def _google_classify_photo_type(self, detected: set) -> str:
+        """Classify photo type from Google Vision labels."""
+        type_map = {
+            "kitchen": "kitchen",
+            "bathroom": "bathroom",
+            "bathtub": "bathroom",
+            "shower": "bathroom",
+            "toilet": "bathroom",
+            "sink": "bathroom",
+            "roof": "roof",
+            "roofing": "roof",
+            "garden": "garden",
+            "yard": "garden",
+            "lawn": "garden",
+            "backyard": "garden",
+            "house": "exterior",
+            "facade": "exterior",
+            "building": "exterior",
+            "porch": "exterior",
+            "driveway": "exterior",
+            "living room": "interior",
+            "bedroom": "interior",
+            "room": "interior",
+            "floor": "interior",
+            "ceiling": "interior",
+            "window": "interior",
+            "furniture": "interior",
+        }
+        for keyword, ptype in type_map.items():
+            if keyword in detected:
+                return ptype
+        return "other"
+
+    def _google_estimate_condition(self, labels: List[str], scores: Dict[str, float]) -> int:
+        """Estimate condition rating (1-10) from label signals."""
+        rating = 6  # neutral starting point
+
+        positive_signals = [
+            "modern", "new", "luxury", "contemporary", "renovation",
+            "renovated", "clean", "polished", "elegant", "stylish",
+        ]
+        negative_signals = [
+            "old", "aged", "worn", "damaged", "stain", "crack",
+            "mold", "rust", "decay", "derelict", "abandoned",
+            "dilapidated", "peeling", "broken",
+        ]
+
+        for label in labels:
+            for pos in positive_signals:
+                if pos in label:
+                    rating += 1
+                    break
+            for neg in negative_signals:
+                if neg in label:
+                    rating -= 1
+                    break
+
+        return max(1, min(10, rating))
+
+    def _google_build_observations(self, labels: List[str], objects: List[str]) -> List[str]:
+        """Build human-readable observation list."""
+        observations = []
+        property_terms = {
+            "house", "building", "room", "kitchen", "bathroom", "bedroom",
+            "living room", "garden", "yard", "floor", "ceiling", "wall",
+            "door", "window", "fence", "roof", "driveway", "furniture",
+            "countertop", "cabinetry", "sink", "bathtub", "toilet",
+            "staircase", "fireplace", "deck", "patio", "pool",
+        }
+        for label in labels:
+            if label in property_terms or any(t in label for t in property_terms):
+                observations.append(f"Detected: {label}")
+        for obj in objects:
+            if obj in property_terms or any(t in obj for t in property_terms):
+                observations.append(f"Object: {obj}")
+        return list(dict.fromkeys(observations))  # deduplicate preserving order
+
+    def _google_detect_issues(self, detected: set) -> List[str]:
+        """Detect potential issues from labels/objects."""
+        issue_keywords = {
+            "rust": "Rust or corrosion detected",
+            "crack": "Cracks visible",
+            "mold": "Possible mould/mildew",
+            "stain": "Staining or water marks",
+            "damage": "Visible damage",
+            "peeling": "Peeling paint or surfaces",
+            "decay": "Material decay detected",
+            "weed": "Overgrown vegetation/weeds",
+            "broken": "Broken elements detected",
+            "leak": "Possible water leak signs",
+        }
+        issues = []
+        for keyword, description in issue_keywords.items():
+            if any(keyword in item for item in detected):
+                issues.append(description)
+        return issues
+
+    def _google_renovation_indicators(self, detected: set) -> Dict[str, bool]:
+        """Determine renovation indicators from detected features."""
+        indicators = {
+            "needs_paint": any(k in str(detected) for k in ["peeling", "faded", "stain", "worn"]),
+            "dated_fixtures": any(k in str(detected) for k in ["vintage", "retro", "old", "antique", "dated"]),
+            "structural_concerns": any(k in str(detected) for k in ["crack", "foundation", "lean", "sag"]),
+            "moisture_damage": any(k in str(detected) for k in ["mold", "mould", "damp", "stain", "leak", "rust"]),
+            "roof_issues": any(k in str(detected) for k in ["rust", "moss", "damaged roof", "missing"]),
+            "needs_kitchen_update": any(k in str(detected) for k in ["dated", "old", "laminate"]) and "kitchen" in detected,
+            "needs_bathroom_update": any(k in str(detected) for k in ["dated", "old", "stain"]) and ("bathroom" in detected or "bathtub" in detected),
+        }
+        return indicators
+
+    def _google_estimate_age(self, detected: set) -> str:
+        """Rough age estimation from visual cues."""
+        if any(k in str(detected) for k in ["modern", "contemporary", "new"]):
+            return "Modern (post-2010)"
+        elif any(k in str(detected) for k in ["vintage", "retro", "antique"]):
+            return "Pre-1970s"
+        elif any(k in str(detected) for k in ["dated", "old"]):
+            return "1970s-1990s era"
+        return "Unable to determine from labels"
+
     def _get_summary(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Get overall summary from individual photo analyses."""
         if self.provider == "openai":
             return self._summarize_openai(analyses)
         elif self.provider == "anthropic":
             return self._summarize_anthropic(analyses)
+        # Google Vision uses heuristic summary (no LLM for summarisation)
         return self._summarize_heuristic(analyses)
 
     def _summarize_openai(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:

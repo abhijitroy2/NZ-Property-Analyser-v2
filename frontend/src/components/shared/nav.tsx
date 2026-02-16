@@ -11,7 +11,9 @@ import {
   Bookmark,
   Settings,
   Play,
+  Loader2,
 } from "lucide-react";
+import { getPipelineStatus, type PipelineStatus } from "@/lib/api";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -65,8 +67,70 @@ export function Nav() {
           {/* Run Pipeline Button */}
           <PipelineButton />
         </div>
+        <PipelineStatusBar />
       </div>
     </nav>
+  );
+}
+
+function PipelineStatusBar() {
+  const [status, setStatus] = useState<PipelineStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const s = await getPipelineStatus();
+        if (!cancelled) setStatus(s);
+      } catch {
+        if (!cancelled) setStatus(null);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  if (!status?.running) return null;
+
+  const progress = status.progress;
+  const progressPct = progress && progress.total > 0
+    ? Math.round((progress.current / progress.total) * 100)
+    : null;
+
+  return (
+    <div className="flex items-center gap-3 py-1.5 px-4 bg-emerald-50 dark:bg-emerald-950/50 border-t border-emerald-200 dark:border-emerald-800 text-sm">
+      <Loader2 className="h-4 w-4 animate-spin text-emerald-600 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <span className="font-medium text-emerald-800 dark:text-emerald-200">
+          {status.task === "scrape" && "Scraping TradeMe"}
+          {status.task === "analyze" && "Analyzing listings"}
+          {status.task === "full" && "Pipeline running"}
+        </span>
+        {status.message && (
+          <span className="text-emerald-700 dark:text-emerald-300 ml-2 truncate">
+            — {status.message}
+          </span>
+        )}
+      </div>
+      {progressPct !== null && (
+        <span className="flex-shrink-0 font-mono text-emerald-700 dark:text-emerald-300">
+          {status.progress?.current}/{status.progress?.total} ({progressPct}%)
+        </span>
+      )}
+      {progress && progress.total > 1 && (
+        <div className="w-24 h-1.5 rounded-full bg-emerald-200 dark:bg-emerald-800 overflow-hidden flex-shrink-0">
+          <div
+            className="h-full bg-emerald-600 transition-all duration-300"
+            style={{ width: `${progressPct ?? 0}%` }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -32,6 +32,7 @@ from app.services.financial.rental_model import calculate_rental_financials
 from app.services.financial.strategy import decide_strategy
 
 from app.services.scoring.scorer import calculate_composite_score
+from app.pipeline_status import set_running, update_progress, set_idle
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +49,21 @@ class PropertyPipeline:
     def run_full_pipeline(self):
         """Run the complete pipeline: scrape, filter, analyze, score."""
         logger.info("=== Starting full pipeline ===")
+        try:
+            set_running("full", "Starting full pipeline...")
+            # Step 1: Scrape new listings
+            self.scrape_new_listings()
 
-        # Step 1: Scrape new listings
-        self.scrape_new_listings()
+            # Step 2: Filter and analyze
+            self.analyze_pending_listings()
 
-        # Step 2: Filter and analyze
-        self.analyze_pending_listings()
+            # Step 3: Re-rank all analyzed listings
+            set_running("full", "Re-ranking listings...")
+            self._rerank_all()
 
-        # Step 3: Re-rank all analyzed listings
-        self._rerank_all()
-
-        logger.info("=== Pipeline complete ===")
+            logger.info("=== Pipeline complete ===")
+        finally:
+            set_idle()
 
     def scrape_new_listings(self):
         """Pull new listings from TradeMe. Reads URLs from DB, falls back to .env."""
@@ -70,13 +75,16 @@ class PropertyPipeline:
             logger.warning("No search URLs configured. Add URLs in Settings or set TRADEME_SEARCH_URLS in .env")
             return
 
+        set_running("scrape", f"Scraping {len(search_urls)} search URL(s)...", {"current": 0, "total": len(search_urls)})
+
         # Sync enabled URLs to TM-scraper-1 input.txt before scraping
         db_urls = self.db.query(SearchURL).filter(SearchURL.enabled == True).all()
         if db_urls:
             _sync_to_scraper_input(db_urls)
 
         total_new = 0
-        for url in search_urls:
+        for i, url in enumerate(search_urls):
+            update_progress(f"Scraping URL {i + 1} of {len(search_urls)}", i + 1, len(search_urls))
             try:
                 new_listings = self.scraper.scrape_search_url(url)
                 total_new += len(new_listings)
@@ -95,13 +103,21 @@ class PropertyPipeline:
 
         logger.info(f"Analyzing {len(pending)} pending listings")
 
-        for listing in pending:
-            try:
-                self.analyze_listing(listing)
-            except Exception as e:
-                logger.error(f"Failed to analyze listing {listing.listing_id}: {e}")
-                listing.analysis_status = "failed"
-                self.db.commit()
+        if pending:
+            set_running("analyze", f"Analyzing {len(pending)} listing(s)...", {"current": 0, "total": len(pending)})
+        try:
+            for i, listing in enumerate(pending):
+                update_progress(f"Analyzing: {listing.address or listing.listing_id}", i + 1, len(pending))
+                try:
+                    self.analyze_listing(listing)
+                except Exception as e:
+                    logger.error(f"Failed to analyze listing {listing.listing_id}: {e}")
+                    listing.analysis_status = "failed"
+                    self.db.commit()
+        finally:
+            if pending:
+                # Don't call set_idle here - run_full_pipeline will do it, or standalone analyze will
+                pass
 
     def analyze_listing(self, listing: Listing):
         """Run full analysis on a single listing."""
@@ -323,6 +339,7 @@ class PropertyPipeline:
             "suburb": listing.suburb,
             "district": listing.district,
             "region": listing.region,
+            "geographic_location": listing.geographic_location or "",
             "bedrooms": listing.bedrooms,
             "bathrooms": listing.bathrooms,
             "land_area": listing.land_area,

@@ -16,7 +16,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <Nav />
-        <main className="pt-20 pb-8 px-4 sm:px-6 max-w-screen-2xl mx-auto">
+        <main className="pt-24 pb-8 px-4 sm:px-6 max-w-screen-2xl mx-auto">
           {children}
         </main>
       </body>

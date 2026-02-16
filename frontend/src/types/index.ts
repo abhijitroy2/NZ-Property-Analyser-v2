@@ -87,15 +87,18 @@ export interface InsurabilityData {
 }
 
 export interface ImageAnalysis {
-  roof_condition: string;
-  exterior_condition: string;
-  interior_quality: string;
-  kitchen_age: string;
-  bathroom_age: string;
-  structural_concerns: string[];
-  overall_reno_level: string;
-  key_renovation_items: string[];
-  confidence: string;
+  roof_condition?: string;
+  exterior_condition?: string;
+  interior_quality?: string;
+  kitchen_age?: string;
+  bathroom_age?: string;
+  structural_concerns?: string[];
+  overall_reno_level?: string;
+  key_renovation_items?: string[];
+  confidence?: string;
+  source?: string;
+  note?: string;
+  renovation_indicators?: Record<string, boolean>;
 }
 
 export interface RenovationEstimate {
@@ -209,6 +212,7 @@ export interface DashboardSummary {
   analyzed: number;
   verdicts: Record<string, number>;
   average_score: number;
+  vision_counts?: Record<string, number>;
 }
 
 export interface TopDeal {
@@ -228,6 +232,8 @@ export interface TopDeal {
   rental_yield: number;
   timeline_weeks: number;
   property_url: string;
+  vision_source?: string;
+  vision_confidence?: string;
 }
 
 // ===== Scenario Types =====

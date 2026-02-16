@@ -1,13 +1,28 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.database import get_db
 from app.models.listing import Listing
 from app.models.analysis import Analysis
 
 router = APIRouter()
+
+
+def _get_vision_source(image_analysis: Optional[Dict]) -> str:
+    """Extract human-readable vision source from image_analysis."""
+    if not image_analysis:
+        return "none"
+    src = image_analysis.get("source", "unknown")
+    labels = {
+        "mock_default": "Mock (default)",
+        "no_photos": "No photos",
+        "google_vision": "Google Vision",
+        "openai": "OpenAI GPT-4V",
+        "anthropic": "Anthropic Claude",
+    }
+    return labels.get(src, src)
 
 
 @router.get("/summary")
@@ -31,6 +46,13 @@ def get_dashboard_summary(db: Session = Depends(get_db)) -> Dict[str, Any]:
     # Average score
     avg_score = db.query(func.avg(Analysis.composite_score)).filter(Analysis.composite_score.isnot(None)).scalar()
 
+    # Vision API breakdown (how many analyses used each vision source)
+    vision_counts: Dict[str, int] = {}
+    analyses_with_vision = db.query(Analysis.image_analysis).filter(Analysis.image_analysis.isnot(None)).all()
+    for (img,) in analyses_with_vision:
+        src = _get_vision_source(img)
+        vision_counts[src] = vision_counts.get(src, 0) + 1
+
     return {
         "total_listings": total_listings,
         "passed_filters": passed_filters,
@@ -39,6 +61,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "analyzed": analyzed,
         "verdicts": verdicts,
         "average_score": round(avg_score, 1) if avg_score else 0,
+        "vision_counts": vision_counts,
     }
 
 
@@ -61,6 +84,8 @@ def get_top_deals(limit: int = 5, db: Session = Depends(get_db)) -> List[Dict[st
         flip = analysis.flip_financials or {}
         rental = analysis.rental_financials or {}
 
+        image_analysis = analysis.image_analysis or {}
+        vision_source = _get_vision_source(image_analysis)
         deals.append({
             "id": listing.id,
             "listing_id": listing.listing_id,
@@ -78,6 +103,8 @@ def get_top_deals(limit: int = 5, db: Session = Depends(get_db)) -> List[Dict[st
             "rental_yield": rental.get("gross_yield_percentage", 0),
             "timeline_weeks": (analysis.timeline_estimate or {}).get("estimated_weeks", 0),
             "property_url": listing.property_url,
+            "vision_source": vision_source,
+            "vision_confidence": image_analysis.get("confidence", ""),
         })
 
     return deals

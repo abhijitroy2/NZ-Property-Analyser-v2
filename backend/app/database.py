@@ -24,3 +24,20 @@ def get_db():
 def init_db():
     """Create all database tables."""
     Base.metadata.create_all(bind=engine)
+
+
+def flush_db():
+    """Delete all data from database tables. Use for starting fresh with tests."""
+    from app.models import Analysis, PortfolioEntry, Listing, WatchlistItem, SearchURL
+
+    init_db()  # Ensure tables exist (creates them if database is new)
+    db = SessionLocal()
+    try:
+        db.query(Analysis).delete()
+        db.query(PortfolioEntry).delete()
+        db.query(Listing).delete()
+        db.query(WatchlistItem).delete()
+        db.query(SearchURL).delete()
+        db.commit()
+    finally:
+        db.close()

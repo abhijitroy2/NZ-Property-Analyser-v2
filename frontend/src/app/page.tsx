@@ -14,6 +14,7 @@ import {
   BarChart3,
   TrendingUp,
   MapPin,
+  Camera,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -118,6 +119,34 @@ export default function DashboardPage() {
           icon={TrendingUp}
         />
       </div>
+
+      {/* Vision API Breakdown */}
+      {s.vision_counts && Object.keys(s.vision_counts).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5 text-[var(--primary)]" />
+              Vision API Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[var(--muted-foreground)] mb-3">
+              How many analyzed properties used each vision source (affects renovation estimates)
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(s.vision_counts).map(([source, count]) => (
+                <div
+                  key={source}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--muted)] text-sm font-medium"
+                >
+                  <span className="text-[var(--foreground)]">{source}</span>
+                  <span className="text-[var(--muted-foreground)] ml-2">{count}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Verdicts Summary */}
       {Object.keys(s.verdicts).length > 0 && (

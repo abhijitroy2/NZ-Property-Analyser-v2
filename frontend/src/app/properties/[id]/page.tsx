@@ -32,6 +32,7 @@ import {
   Clock,
   Bookmark,
   BarChart3,
+  Camera,
 } from "lucide-react";
 
 export default function PropertyDetailPage() {
@@ -132,6 +133,7 @@ export default function PropertyDetailPage() {
   const insurance = analysis?.insurability;
   const subdiv = analysis?.subdivision_analysis;
   const scores = analysis?.component_scores;
+  const imageAnalysis = analysis?.image_analysis;
 
   // For scenario display, use scenario result if available, else analysis
   const displayFlip = scenarioResult?.flip_financials || flip;
@@ -377,6 +379,68 @@ export default function PropertyDetailPage() {
                 <Row label="Insurable" value={insurance.insurable ? "Yes" : "No"} highlight={insurance.insurable} />
                 <Row label="Annual Premium" value={formatCurrency(insurance.annual_insurance)} />
                 <Row label="Provider" value={insurance.insurer || "N/A"} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* AI Vision Analysis */}
+          {imageAnalysis && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Camera className="h-4 w-4" /> AI Vision Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-3">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded bg-[var(--muted)] text-xs font-medium">
+                    Source: {(() => {
+                      const s = imageAnalysis.source || "";
+                      const labels: Record<string, string> = {
+                        mock_default: "Mock (default)",
+                        no_photos: "No photos",
+                        google_vision: "Google Vision",
+                        openai: "OpenAI GPT-4V",
+                        anthropic: "Anthropic Claude",
+                      };
+                      return labels[s] || s || "Unknown";
+                    })()}
+                  </span>
+                  {imageAnalysis.confidence && (
+                    <span className="px-2 py-0.5 rounded bg-[var(--muted)] text-xs">
+                      Confidence: {imageAnalysis.confidence}
+                    </span>
+                  )}
+                </div>
+                <Row label="Overall reno level" value={imageAnalysis.overall_reno_level || "—"} />
+                <Row label="Roof condition" value={imageAnalysis.roof_condition || "—"} />
+                <Row label="Exterior" value={imageAnalysis.exterior_condition || "—"} />
+                <Row label="Interior quality" value={imageAnalysis.interior_quality || "—"} />
+                <Row label="Kitchen age" value={imageAnalysis.kitchen_age || "—"} />
+                <Row label="Bathroom age" value={imageAnalysis.bathroom_age || "—"} />
+                {imageAnalysis.structural_concerns && imageAnalysis.structural_concerns.length > 0 && (
+                  <div>
+                    <p className="font-medium text-[var(--muted-foreground)] mb-1">Structural concerns</p>
+                    <ul className="list-disc list-inside text-xs">
+                      {imageAnalysis.structural_concerns.map((c: string, i: number) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {imageAnalysis.key_renovation_items && imageAnalysis.key_renovation_items.length > 0 && (
+                  <div>
+                    <p className="font-medium text-[var(--muted-foreground)] mb-1">Key renovation items</p>
+                    <ul className="list-disc list-inside text-xs">
+                      {imageAnalysis.key_renovation_items.map((item: string, i: number) => (
+                        <li key={i}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {imageAnalysis.note && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 italic">{imageAnalysis.note}</p>
+                )}
               </CardContent>
             </Card>
           )}

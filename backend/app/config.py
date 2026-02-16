@@ -14,9 +14,10 @@ class Settings(BaseSettings):
     min_population: int = 50000
 
     # AI Vision
-    vision_provider: str = "mock"  # "openai", "anthropic", "mock"
+    vision_provider: str = "mock"  # "openai", "anthropic", "google", "mock"
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    google_vision_credentials: Optional[str] = None  # Path to Google service account JSON key file
 
     # Google Maps
     google_maps_api_key: Optional[str] = None
@@ -31,6 +32,9 @@ class Settings(BaseSettings):
 
     # Insurance
     insurance_provider: str = "mock"
+
+    # Subdivision
+    subdivision_use_council_rules: bool = True  # Use council zone APIs and rules when in scope
 
     # Scheduler
     enable_scheduler: bool = False

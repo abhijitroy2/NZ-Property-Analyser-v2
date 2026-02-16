@@ -4,8 +4,15 @@ from typing import Dict, Any
 
 from app.database import get_db
 from app.services.pipeline import PropertyPipeline
+from app.pipeline_status import set_idle, set_running, get_status
 
 router = APIRouter()
+
+
+@router.get("/status")
+def pipeline_status() -> Dict[str, Any]:
+    """Get current pipeline task status (for frontend display)."""
+    return get_status()
 
 
 @router.post("/run")
@@ -62,6 +69,7 @@ def _run_scrape_task():
         pipeline.scrape_new_listings()
     finally:
         db.close()
+        set_idle()
 
 
 def _run_analysis_task():
@@ -73,6 +81,7 @@ def _run_analysis_task():
         pipeline.analyze_pending_listings()
     finally:
         db.close()
+        set_idle()
 
 
 def _run_single_analysis_task(listing_id: int):
@@ -81,9 +90,11 @@ def _run_single_analysis_task(listing_id: int):
     from app.models.listing import Listing
     db = SessionLocal()
     try:
-        pipeline = PropertyPipeline(db)
         listing = db.query(Listing).filter(Listing.id == listing_id).first()
         if listing:
+            set_running("analyze", f"Analyzing: {listing.address or listing.listing_id}", {"current": 1, "total": 1})
+            pipeline = PropertyPipeline(db)
             pipeline.analyze_listing(listing)
     finally:
         db.close()
+        set_idle()

@@ -103,6 +103,19 @@ export async function toggleSearchURL(id: number): Promise<{ enabled: boolean }>
 }
 
 // ===== Pipeline =====
+export interface PipelineStatus {
+  running: boolean;
+  task: string | null;
+  message: string;
+  progress: { current: number; total: number } | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export async function getPipelineStatus(): Promise<PipelineStatus> {
+  return fetchAPI<PipelineStatus>(`/pipeline/status`);
+}
+
 export async function runPipeline(): Promise<{ status: string; message: string }> {
   return fetchAPI(`/pipeline/run`, { method: "POST" });
 }

@@ -8,6 +8,11 @@ venv/
 *.db
 *.sqlite3
 
+# Credentials / Service account keys (NEVER commit these)
+credentials/
+*.json.key
+*-key.json
+
 # Node
 node_modules/
 .next/

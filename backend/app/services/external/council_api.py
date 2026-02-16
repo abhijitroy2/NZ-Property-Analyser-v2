@@ -1,10 +1,14 @@
 """
 Council Rates & Zoning API Client.
-Fetches council rates and zoning data. Uses mock data when APIs unavailable.
+Fetches council rates and zoning data. Uses council zone APIs when in scope.
 """
 
 import logging
 from typing import Dict, Any, Optional
+
+from app.config import settings
+from app.services.external.google_maps import GoogleMapsClient
+from app.services.external.zone_api import resolve_council, get_zone_at_point, get_rules_for_zone
 
 logger = logging.getLogger(__name__)
 
@@ -91,20 +95,19 @@ class CouncilAPIClient:
             "district": district,
         }
 
-    def get_zoning(self, address: str, district: str) -> Dict[str, Any]:
+    def get_zoning(self, address: str, district: str, region: str = "") -> Dict[str, Any]:
         """
         Get zoning information for a property.
-        Falls back to default residential zoning when API unavailable.
+        Uses council zone API when in scope; falls back to default when unavailable.
         """
-        # Try council API (placeholder)
-        zoning = self._fetch_zoning(address, district)
+        zoning = self._fetch_zoning(address, district, region)
         if zoning:
             return zoning
 
         return {
             "zoning": DEFAULT_ZONING,
             "source": "default",
-            "min_lot_size": 600,  # Default minimum lot for subdivision
+            "min_lot_size": 600,
         }
 
     def _fetch_specific_rates(self, address: str, district: str) -> Optional[Dict[str, Any]]:
@@ -117,7 +120,43 @@ class CouncilAPIClient:
         logger.debug(f"Council rates lookup for {address} in {district} - API integration pending")
         return None
 
-    def _fetch_zoning(self, address: str, district: str) -> Optional[Dict[str, Any]]:
-        """Try to fetch zoning from council GIS systems."""
-        logger.debug(f"Zoning lookup for {address} in {district} - API integration pending")
-        return None
+    def _fetch_zoning(self, address: str, district: str, region: str = "") -> Optional[Dict[str, Any]]:
+        """
+        Fetch zoning from council zone API when in scope.
+        Uses zone_api + rules DB for council-aware lookups.
+        """
+        if not settings.subdivision_use_council_rules:
+            return None
+
+        council = resolve_council(district, region)
+        if not council or not council.get("in_scope"):
+            return None
+
+        council_id = council.get("council_id", "")
+        gm_client = GoogleMapsClient()
+        listing_data = {
+            "address": address,
+            "district": district,
+            "region": region,
+            "full_address": f"{address}, {district}, New Zealand",
+        }
+        coords = gm_client.get_coordinates(listing_data)
+        if not coords:
+            return None
+
+        lat, lng = coords
+        zone_result = get_zone_at_point(council_id, lat, lng, council)
+        zone_code = "default"
+        if zone_result:
+            zone_code = zone_result.get("zone_code", "default")
+
+        rules = get_rules_for_zone(council_id, zone_code)
+        if not rules:
+            return None
+
+        min_lot = rules.get("min_lot_sqm", 600)
+        return {
+            "zoning": zone_code,
+            "source": "zone_api",
+            "min_lot_size": min_lot,
+        }

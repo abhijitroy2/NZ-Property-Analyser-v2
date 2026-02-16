@@ -1,7 +1,8 @@
 """Stage 1 Filter: Price check against max budget."""
 
+import re
 import logging
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional
 
 from app.config import settings
 
@@ -11,19 +12,35 @@ REJECT = "REJECT"
 PASS = "PASS"
 
 
+def _parse_capital_value(cv: str) -> Optional[float]:
+    """Parse capital value string (e.g. '$450,000' or '450000') to float."""
+    if not cv:
+        return None
+    match = re.search(r"[\d,]+\.?\d*", str(cv))
+    if match:
+        val = float(match.group(0).replace(",", ""))
+        if val > 1000:
+            return val
+    return None
+
+
 def filter_price(listing) -> Tuple[str, str]:
     """
     Max budget filter. Rejects listings over the configured max price.
-    
-    Returns:
-        Tuple of (status, reason). Status is "PASS" or "REJECT".
+    When display_price is non-dollar (deadline sale, auction, price by negotiation, etc.),
+    asking_price will be None; in that case we fall back to capital_value.
     """
     max_price = settings.max_price
     asking_price = listing.asking_price
 
+    if asking_price is None and listing.capital_value:
+        asking_price = _parse_capital_value(listing.capital_value)
+        if asking_price is not None:
+            logger.info(f"Listing {listing.listing_id}: No asking price ('{listing.display_price}'), using capital value ${asking_price:,.0f}")
+
     if asking_price is None:
-        # If we can't determine price, let it through for manual review
-        logger.info(f"Listing {listing.listing_id}: No parseable price ('{listing.display_price}'), passing for manual review")
+        # If we can't determine price from either source, let it through for manual review
+        logger.info(f"Listing {listing.listing_id}: No parseable price ('{listing.display_price}', CV: '{listing.capital_value}'), passing for manual review")
         return PASS, ""
 
     if asking_price > max_price:
