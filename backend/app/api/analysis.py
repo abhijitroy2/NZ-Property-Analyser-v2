@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models.listing import Listing
 from app.models.analysis import Analysis
 from app.schemas.analysis import AnalysisResponse, ScenarioRequest, ScenarioResponse, PropertyReport
+from app.services.filters.price_filter import get_effective_asking_price
 from app.services.financial.flip_model import calculate_flip_financials
 from app.services.financial.rental_model import calculate_rental_financials
 from app.services.financial.strategy import decide_strategy
@@ -40,10 +41,11 @@ def run_scenario(listing_id: int, scenario: ScenarioRequest, db: Session = Depen
     existing_subdivision = (analysis.subdivision_analysis or {}) if analysis else {}
 
     # Apply overrides
+    effective_price = get_effective_asking_price(listing) or 0
     reno_cost = scenario.renovation_budget or existing_reno.get("total_estimated", 60000)
-    arv = scenario.sale_price or existing_arv.get("estimated_arv", listing.asking_price * 1.3 if listing.asking_price else 0)
+    arv = scenario.sale_price or existing_arv.get("estimated_arv", effective_price * 1.3 if effective_price else 0)
     weekly_rent = scenario.weekly_rent or existing_rental.get("estimated_weekly_rent", 0)
-    purchase_price = scenario.purchase_price or listing.asking_price or 0
+    purchase_price = scenario.purchase_price or effective_price
     interest_rate = scenario.interest_rate
     timeline_weeks = scenario.timeline_weeks or existing_timeline.get("estimated_weeks", 8)
 

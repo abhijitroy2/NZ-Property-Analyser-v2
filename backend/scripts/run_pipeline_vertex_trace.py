@@ -194,14 +194,11 @@ def main():
                     "timeline": timeline,
                 }
 
-                flip = calculate_flip_financials(
-                    {"price_display": listing.asking_price or 0, "bedrooms": listing.bedrooms or 3},
-                    analysis_for_financial,
-                )
-                rental = calculate_rental_financials(
-                    {"price_display": listing.asking_price or 0, "bedrooms": listing.bedrooms or 3},
-                    analysis_for_financial,
-                )
+                from app.services.filters.price_filter import get_effective_asking_price
+                effective_price = get_effective_asking_price(listing) or 0
+                listing_dict = {"price_display": effective_price, "bedrooms": listing.bedrooms or 3}
+                flip = calculate_flip_financials(listing_dict, analysis_for_financial)
+                rental = calculate_rental_financials(listing_dict, analysis_for_financial)
                 strategy = decide_strategy(flip, rental, subdivision)
 
                 scoring_data = {

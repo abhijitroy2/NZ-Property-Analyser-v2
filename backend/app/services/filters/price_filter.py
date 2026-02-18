@@ -24,6 +24,24 @@ def _parse_capital_value(cv: str) -> Optional[float]:
     return None
 
 
+def get_effective_asking_price(listing) -> Optional[float]:
+    """
+    Return the effective purchase price for financial modelling.
+    Uses asking_price when available; otherwise falls back to parsed capital_value.
+    Matches the logic used in filter_price for budget checks.
+    """
+    if listing.asking_price is not None and listing.asking_price > 0:
+        return float(listing.asking_price)
+    if listing.capital_value:
+        cv_val = _parse_capital_value(listing.capital_value)
+        if cv_val is not None:
+            logger.debug(
+                f"Listing {listing.listing_id}: Using capital value ${cv_val:,.0f} (asking_price not set)"
+            )
+            return cv_val
+    return None
+
+
 def filter_price(listing) -> Tuple[str, str]:
     """
     Max budget filter. Rejects listings over the configured max price.

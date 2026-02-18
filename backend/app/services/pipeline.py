@@ -13,7 +13,7 @@ from app.models.listing import Listing
 from app.models.analysis import Analysis
 
 from app.services.scraper.trademe import TradeMeScraper
-from app.services.filters.price_filter import filter_price
+from app.services.filters.price_filter import filter_price, get_effective_asking_price
 from app.services.filters.title_filter import filter_title
 from app.services.filters.population_filter import filter_population
 from app.services.filters.property_type_filter import filter_property_type
@@ -262,8 +262,9 @@ class PropertyPipeline:
 
     def _run_stage3_financials(self, listing: Listing, analysis: dict) -> dict:
         """Run Stage 3 financial models."""
+        effective_price = get_effective_asking_price(listing) or 0
         listing_dict = {
-            "price_display": listing.asking_price or 0,
+            "price_display": effective_price,
             "bedrooms": listing.bedrooms or 3,
         }
 
@@ -343,6 +344,7 @@ class PropertyPipeline:
 
     def _listing_to_dict(self, listing: Listing) -> dict:
         """Convert Listing ORM object to dict for analysis functions."""
+        effective_price = get_effective_asking_price(listing)
         return {
             "listing_id": listing.listing_id,
             "address": listing.address,
@@ -356,7 +358,7 @@ class PropertyPipeline:
             "land_area": listing.land_area,
             "floor_area": listing.floor_area,
             "property_type": listing.property_type,
-            "asking_price": listing.asking_price,
+            "asking_price": effective_price,
             "capital_value": listing.capital_value,
             "title": listing.title,
             "description": listing.description,
