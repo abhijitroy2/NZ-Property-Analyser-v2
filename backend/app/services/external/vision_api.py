@@ -1,12 +1,14 @@
 """
 AI Vision API Service.
 Analyzes property listing photos to assess renovation needs.
-Supports OpenAI GPT-4V, Anthropic Claude Vision, Google Cloud Vision, or mock mode.
+Supports OpenAI GPT-4V, Anthropic Claude Vision, Google Cloud Vision,
+Vertex AI Gemini, or mock mode.
 """
 
 import json
 import logging
 import os
+import re
 import base64
 from typing import Dict, Any, List, Optional
 
@@ -46,13 +48,56 @@ SUMMARY_PROMPT = """Based on these individual photo analyses of a property listi
   "kitchen_age": "0-5yr" | "5-10yr" | "10-20yr" | "20+yr" | "UNKNOWN",
   "bathroom_age": "0-5yr" | "5-10yr" | "10-20yr" | "20+yr" | "UNKNOWN",
   "structural_concerns": ["list of visible structural issues"],
-  "overall_reno_level": "COSMETIC" | "MODERATE" | "MAJOR" | "FULL_GUT",
+  "overall_reno_level": "NONE" | "COSMETIC" | "MODERATE" | "MAJOR" | "FULL_GUT",
   "key_renovation_items": ["list of main renovation tasks needed"],
   "confidence": "HIGH" | "MEDIUM" | "LOW"
 }
 
 Individual photo analyses:
 """
+
+# Single-call multi-image prompt (OpenAI only) — combines per-photo and summary in one request
+MULTI_IMAGE_PROMPT = """You are analyzing property listing photos for renovation assessment (NZ context). These {n} photos show different views of the property. Return a single JSON object with these required fields:
+
+{{
+  "roof_condition": "NEW_IRON" | "OLD_IRON" | "TILES" | "NEEDS_REPLACE" | "UNKNOWN",
+  "exterior_condition": "EXCELLENT" | "GOOD" | "FAIR" | "POOR",
+  "interior_quality": "MODERN" | "DATED" | "VERY_DATED" | "DERELICT",
+  "kitchen_age": "0-5yr" | "5-10yr" | "10-20yr" | "20+yr" | "UNKNOWN",
+  "bathroom_age": "0-5yr" | "5-10yr" | "10-20yr" | "20+yr" | "UNKNOWN",
+  "structural_concerns": ["list of visible structural issues if any"],
+  "overall_reno_level": "NONE" | "COSMETIC" | "MODERATE" | "MAJOR" | "FULL_GUT",
+  "key_renovation_items": ["list of main renovation tasks needed"],
+  "confidence": "HIGH" | "MEDIUM" | "LOW"
+}}
+
+Optionally include: flip_plan (list), rental_minimum_plan (list), healthy_homes_risks_visible (list), due_diligence_checks (list).
+
+Be specific and practical. Focus on renovation-relevant details. Return only valid JSON, no markdown."""
+
+
+def _extract_json_from_response(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract JSON object from Gemini response. Handles markdown code blocks,
+    truncated output, and text wrapping.
+    """
+    if not text or not text.strip():
+        return None
+    # Strip ```json or ``` prefix if present (handles truncated responses without closing ```)
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*\n?", "", cleaned)
+        cleaned = re.sub(r"```\s*$", "", cleaned)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}") + 1
+    if start >= 0 and end > start:
+        raw = cleaned[start:end]
+        for candidate in [raw, re.sub(r",\s*}", "}", raw), re.sub(r",\s*]", "]", raw)]:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+    return None
 
 
 class VisionAPIClient:
@@ -61,9 +106,26 @@ class VisionAPIClient:
     def __init__(self):
         self.provider = settings.vision_provider
         self._google_client = None
+        self._vertex_client = None
+
+        # Set up Vertex AI env for Gemini (VISION_PROVIDER=vertex)
+        if self.provider == "vertex":
+            if settings.google_cloud_project:
+                os.environ.setdefault("GOOGLE_CLOUD_PROJECT", settings.google_cloud_project)
+            os.environ.setdefault("GOOGLE_CLOUD_LOCATION", settings.google_cloud_location)
+            os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
+            try:
+                from google import genai
+                from google.genai.types import HttpOptions
+                self._vertex_client = genai.Client(http_options=HttpOptions(api_version="v1"))
+                logger.info("Vertex AI Gemini client initialised successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialise Vertex AI client: {e}")
+                logger.warning("Falling back to mock provider")
+                self.provider = "mock"
 
         # Set up Google Vision credentials if configured
-        if self.provider == "google":
+        elif self.provider == "google":
             cred_path = settings.google_vision_credentials
             if cred_path:
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
@@ -93,7 +155,11 @@ class VisionAPIClient:
         if self.provider == "mock":
             return self._mock_analysis(photos)
 
-        # Analyze individual photos (limit to 6 to manage costs)
+        # OpenAI: single multi-image call (cost-effective, 1 API call)
+        if self.provider == "openai":
+            return self._analyze_openai_multi(photos)
+
+        # Vertex, Anthropic, Google: per-photo analysis + summary
         photos_to_analyze = photos[:6]
         individual_analyses = []
 
@@ -108,7 +174,6 @@ class VisionAPIClient:
         if not individual_analyses:
             return self._default_analysis()
 
-        # Get overall summary from individual analyses
         summary = self._get_summary(individual_analyses)
         return summary
 
@@ -120,34 +185,88 @@ class VisionAPIClient:
             return self._analyze_anthropic(photo_url)
         elif self.provider == "google":
             return self._analyze_google(photo_url)
+        elif self.provider == "vertex":
+            return self._analyze_vertex(photo_url)
         return None
 
     def _analyze_openai(self, photo_url: str) -> Optional[Dict[str, Any]]:
-        """Analyze photo using OpenAI GPT-4 Vision."""
+        """Analyze photo using OpenAI vision model (cost-effective default)."""
+        if not settings.openai_api_key:
+            logger.warning("OpenAI API key not configured")
+            return None
         try:
             import openai
             client = openai.OpenAI(api_key=settings.openai_api_key)
 
+            prompt = ANALYSIS_PROMPT + "\n\nReturn only valid JSON, no markdown."
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=getattr(settings, "openai_vision_model", "gpt-4o-mini") or "gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": ANALYSIS_PROMPT},
+                            {"type": "text", "text": prompt},
                             {"type": "image_url", "image_url": {"url": photo_url}},
                         ],
                     }
                 ],
-                max_tokens=500,
+                max_tokens=2048,
                 response_format={"type": "json_object"},
             )
 
-            text = response.choices[0].message.content
-            return json.loads(text)
+            text = response.choices[0].message.content or ""
+            result = _extract_json_from_response(text) or (json.loads(text) if text else None)
+            if result:
+                result["source"] = "openai"
+                return result
+            return None
         except Exception as e:
             logger.warning(f"OpenAI vision analysis failed: {e}")
             return None
+
+    def _analyze_openai_multi(self, photos: List[str]) -> Dict[str, Any]:
+        """
+        Single multi-image API call for OpenAI. Combines analysis + summary in one request.
+        Uses first 6 photos. On failure or invalid JSON, falls back to heuristic (no per-photo data).
+        """
+        if not settings.openai_api_key:
+            logger.warning("OpenAI API key not configured")
+            return self._summarize_heuristic([])
+        photos_to_send = photos[:6]
+        if not photos_to_send:
+            return self._default_analysis()
+        try:
+            import openai
+            client = openai.OpenAI(api_key=settings.openai_api_key)
+
+            content: List[Dict[str, Any]] = [
+                {"type": "text", "text": MULTI_IMAGE_PROMPT.format(n=len(photos_to_send)) + "\n\nReturn only valid JSON, no markdown."}
+            ]
+            for url in photos_to_send:
+                content.append({"type": "image_url", "image_url": {"url": url}})
+
+            response = client.chat.completions.create(
+                model=getattr(settings, "openai_vision_model", "gpt-4o-mini") or "gpt-4o-mini",
+                messages=[{"role": "user", "content": content}],
+                max_tokens=1024,
+                response_format={"type": "json_object"},
+            )
+
+            text = response.choices[0].message.content or ""
+            usage = getattr(response, "usage", None)
+            if usage:
+                logger.info(
+                    "OpenAI multi-image: prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+                    getattr(usage, "prompt_tokens", "-"),
+                    getattr(usage, "completion_tokens", "-"),
+                    getattr(usage, "total_tokens", "-"),
+                )
+            result = _extract_json_from_response(text) or (json.loads(text) if text else None)
+            if result and isinstance(result, dict):
+                return result
+        except Exception as e:
+            logger.warning(f"OpenAI multi-image analysis failed: {e}")
+        return self._summarize_heuristic([])
 
     def _analyze_anthropic(self, photo_url: str) -> Optional[Dict[str, Any]]:
         """Analyze photo using Anthropic Claude Vision."""
@@ -244,6 +363,62 @@ class VisionAPIClient:
         except Exception as e:
             logger.warning(f"Google Vision analysis failed: {e}")
             return None
+
+    def _analyze_vertex(self, photo_url: str) -> Optional[Dict[str, Any]]:
+        """Analyze photo using Vertex AI Gemini (image understanding)."""
+        if not self._vertex_client:
+            return None
+        try:
+            from google.genai.types import Part
+
+            # Download image for reliable handling (HTTP URLs can be flaky with Vertex)
+            resp = requests.get(photo_url, timeout=15)
+            resp.raise_for_status()
+            img_bytes = resp.content
+            mime = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip() or "image/jpeg"
+            image_part = Part.from_bytes(data=img_bytes, mime_type=mime)
+
+            response = self._vertex_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    ANALYSIS_PROMPT + "\n\nReturn only valid JSON, no markdown.",
+                    image_part,
+                ],
+                config={"max_output_tokens": 2048, "temperature": 0.2},
+            )
+            text = response.text or ""
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                result = json.loads(text[start:end])
+                result["source"] = "vertex_ai"
+                return result
+            logger.warning("Vertex AI did not return valid JSON")
+            return None
+        except Exception as e:
+            logger.warning(f"Vertex AI vision analysis failed: {e}")
+            return None
+
+    def _summarize_vertex(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Use Vertex AI Gemini to summarize individual analyses."""
+        if not self._vertex_client:
+            return self._summarize_heuristic(analyses)
+        try:
+            response = self._vertex_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    SUMMARY_PROMPT + json.dumps(analyses, indent=2) + "\n\nReturn only valid JSON.",
+                ],
+                config={"max_output_tokens": 4096, "temperature": 0.2},
+            )
+            text = response.text or ""
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                return json.loads(text[start:end])
+        except Exception as e:
+            logger.warning(f"Vertex AI summary failed: {e}")
+        return self._summarize_heuristic(analyses)
 
     # ---------- Google Vision helper methods ----------
 
@@ -373,32 +548,43 @@ class VisionAPIClient:
             return self._summarize_openai(analyses)
         elif self.provider == "anthropic":
             return self._summarize_anthropic(analyses)
+        elif self.provider == "vertex":
+            return self._summarize_vertex(analyses)
         # Google Vision uses heuristic summary (no LLM for summarisation)
         return self._summarize_heuristic(analyses)
 
     def _summarize_openai(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Use OpenAI to summarize individual analyses."""
+        if not settings.openai_api_key:
+            return self._summarize_heuristic(analyses)
         try:
             import openai
             client = openai.OpenAI(api_key=settings.openai_api_key)
 
+            # OpenAI-only extension: add flip vs rental/Healthy Homes guidance while preserving
+            # the existing required schema keys used by downstream code.
+            extra = (
+                "\n\nAdditionally include these OPTIONAL keys in the JSON output (do not remove/rename any existing keys):\n"
+                "- flip_plan: list of high-ROI renovation items + sequencing notes\n"
+                "- rental_minimum_plan: list of minimum works to reduce Healthy Homes risk (heating/ventilation/insulation cues)\n"
+                "- healthy_homes_risks_visible: list of photo-based risk cues (e.g., mould/condensation) if any\n"
+                "- due_diligence_checks: list of checks not verifiable from photos (e.g., insulation statement, extractor fans ducted)\n"
+            )
+            content = SUMMARY_PROMPT + json.dumps(analyses, indent=2) + extra + "\nReturn only valid JSON."
             response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": SUMMARY_PROMPT + json.dumps(analyses, indent=2),
-                    }
-                ],
-                max_tokens=600,
+                model=getattr(settings, "openai_summary_model", "gpt-4o-mini") or "gpt-4o-mini",
+                messages=[{"role": "user", "content": content}],
+                max_tokens=2048,
                 response_format={"type": "json_object"},
             )
 
-            text = response.choices[0].message.content
-            return json.loads(text)
+            text = response.choices[0].message.content or ""
+            result = _extract_json_from_response(text) or (json.loads(text) if text else None)
+            if result:
+                return result
         except Exception as e:
             logger.warning(f"OpenAI summary failed: {e}")
-            return self._summarize_heuristic(analyses)
+        return self._summarize_heuristic(analyses)
 
     def _summarize_anthropic(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Use Anthropic to summarize individual analyses."""
@@ -428,7 +614,10 @@ class VisionAPIClient:
 
     def _summarize_heuristic(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Heuristic-based summary from individual analyses when AI unavailable."""
-        avg_rating = sum(a.get("condition_rating", 5) for a in analyses) / len(analyses) if analyses else 5
+        def _rating(a: Dict) -> int:
+            v = a.get("condition_rating")
+            return int(v) if v is not None else 5
+        avg_rating = sum(_rating(a) for a in analyses) / len(analyses) if analyses else 5
 
         all_issues = []
         reno_indicators = {}

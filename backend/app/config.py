@@ -14,10 +14,15 @@ class Settings(BaseSettings):
     min_population: int = 50000
 
     # AI Vision
-    vision_provider: str = "mock"  # "openai", "anthropic", "google", "mock"
+    vision_provider: str = "mock"  # "openai", "anthropic", "google", "vertex", "mock"
     openai_api_key: Optional[str] = None
+    openai_vision_model: str = "gpt-4o-mini"
+    openai_summary_model: str = "gpt-4o-mini"
     anthropic_api_key: Optional[str] = None
     google_vision_credentials: Optional[str] = None  # Path to Google service account JSON key file
+    # Vertex AI Gemini (for VISION_PROVIDER=vertex)
+    google_cloud_project: Optional[str] = None
+    google_cloud_location: str = "us-central1"
 
     # Google Maps
     google_maps_api_key: Optional[str] = None

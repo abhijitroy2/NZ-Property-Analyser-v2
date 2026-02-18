@@ -24,6 +24,7 @@ from app.services.analysis.timeline import estimate_timeline
 from app.services.analysis.arv import estimate_arv
 from app.services.analysis.rental import estimate_rental_income
 from app.services.analysis.subdivision import analyze_subdivision_potential
+from app.services.analysis.healthy_homes_text import assess_healthy_homes_from_text
 from app.services.external.council_api import CouncilAPIClient
 from app.services.external.vision_api import VisionAPIClient
 
@@ -208,6 +209,16 @@ class PropertyPipeline:
         # Image analysis
         image_analysis = self.vision_client.analyze_listing_photos(listing.photos or [])
 
+        # Healthy Homes (seller-claimed) signals from listing description
+        # Stored alongside image analysis so downstream (reno estimate) can consider it
+        hh_text = assess_healthy_homes_from_text(listing.description or "")
+        try:
+            if isinstance(image_analysis, dict):
+                image_analysis["healthy_homes_text"] = hh_text
+        except Exception:
+            # Never break the pipeline for enrichment data
+            pass
+
         # Renovation estimate
         renovation = estimate_renovation_cost(listing_data, image_analysis)
 
@@ -347,4 +358,6 @@ class PropertyPipeline:
             "property_type": listing.property_type,
             "asking_price": listing.asking_price,
             "capital_value": listing.capital_value,
+            "title": listing.title,
+            "description": listing.description,
         }

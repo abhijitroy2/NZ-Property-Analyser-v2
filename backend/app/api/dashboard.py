@@ -19,6 +19,7 @@ def _get_vision_source(image_analysis: Optional[Dict]) -> str:
         "mock_default": "Mock (default)",
         "no_photos": "No photos",
         "google_vision": "Google Vision",
+        "vertex_ai": "Vertex AI Gemini",
         "openai": "OpenAI GPT-4V",
         "anthropic": "Anthropic Claude",
     }

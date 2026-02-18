@@ -27,8 +27,9 @@ def init_db():
 
 
 def flush_db():
-    """Delete all data from database tables. Use for starting fresh with tests."""
-    from app.models import Analysis, PortfolioEntry, Listing, WatchlistItem, SearchURL
+    """Delete all data from database tables. Use for starting fresh with tests.
+    Preserves search_urls (Settings page) so TradeMe URLs are not lost."""
+    from app.models import Analysis, PortfolioEntry, Listing, WatchlistItem
 
     init_db()  # Ensure tables exist (creates them if database is new)
     db = SessionLocal()
@@ -37,7 +38,7 @@ def flush_db():
         db.query(PortfolioEntry).delete()
         db.query(Listing).delete()
         db.query(WatchlistItem).delete()
-        db.query(SearchURL).delete()
+        # SearchURL preserved - Settings page TradeMe URLs kept
         db.commit()
     finally:
         db.close()

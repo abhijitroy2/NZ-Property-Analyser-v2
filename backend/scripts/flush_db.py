@@ -12,4 +12,4 @@ from app.database import flush_db
 
 if __name__ == "__main__":
     flush_db()
-    print("Database flushed. All tables are now empty.")
+    print("Database flushed. Listings, analyses, portfolio, watchlist cleared. Settings (search URLs) preserved.")

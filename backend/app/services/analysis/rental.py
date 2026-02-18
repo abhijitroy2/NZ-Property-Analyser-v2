@@ -31,28 +31,29 @@ def estimate_rental_income(
     property_type = listing_data.get("property_type", "house")
     purchase_price = listing_data.get("asking_price", 0) or 0
 
-    # Source 1: Tenancy.govt.nz bond data
+    # Source 1: Tenancy CSV (Detailed-Monthly-TLA-Tenancy) bond data
+    district = listing_data.get("district", "")
     tenancy_client = TenancyGovtClient()
     tenancy_data = tenancy_client.get_rental_data(
         suburb=suburb,
         bedrooms=bedrooms,
         region=region,
         property_type=property_type,
+        district=district,
     )
 
     # Source 2: TradeMe estimated rent
     tm_rent = parse_trademe_rent_estimate(trademe_rent_estimate)
 
-    # Determine best estimate
+    # Determine best estimate: take the HIGHER of tenancy CSV and TradeMe when both available
     tenancy_rent = tenancy_data.get("estimated_weekly_rent")
 
     if tenancy_rent and tm_rent:
-        # Both available - use weighted average (60% tenancy, 40% TradeMe)
-        weekly_rent = (tenancy_rent * 0.6) + (tm_rent * 0.4)
-        source = "tenancy_govt_and_trademe"
+        weekly_rent = max(tenancy_rent, tm_rent)
+        source = "tenancy_csv_and_trademe_higher"
     elif tenancy_rent:
         weekly_rent = tenancy_rent
-        source = "tenancy.govt.nz"
+        source = "tenancy_csv"
     elif tm_rent:
         weekly_rent = tm_rent
         source = "trademe_estimate"

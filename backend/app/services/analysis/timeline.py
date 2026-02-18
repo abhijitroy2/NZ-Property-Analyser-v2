@@ -7,6 +7,7 @@ from typing import Dict, Any
 
 # Typical timelines (weeks on tools, excluding consents)
 TIMELINES = {
+    "NONE": 0,
     "COSMETIC": 2,
     "MODERATE": 6,
     "MAJOR": 12,
@@ -45,7 +46,9 @@ def estimate_timeline(renovation_estimate: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _get_timeline_notes(reno_level: str, weeks: int) -> str:
-    if weeks <= 4:
+    if reno_level == "NONE" or weeks == 0:
+        return "No renovation required"
+    elif weeks <= 4:
         return "Quick turnaround - cosmetic work only"
     elif weeks <= 8:
         return "Within 8-week target - manageable renovation"
