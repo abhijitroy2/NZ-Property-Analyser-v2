@@ -1,5 +1,7 @@
 import logging
+import logging.handlers
 import sys
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,12 +11,32 @@ from app.database import init_db
 from app.api import listings, analysis, dashboard, watchlist, portfolio, pipeline
 from app.api.settings import router as settings_router
 
-# Configure logging so all loggers output to console
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    stream=sys.stdout,
-)
+# Configure logging: console + optional file
+_format = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+_formatter = logging.Formatter(_format)
+
+_root = logging.getLogger()
+_root.setLevel(logging.INFO)
+# Remove any existing handlers (e.g. from uvicorn)
+for h in _root.handlers[:]:
+    _root.removeHandler(h)
+
+_console = logging.StreamHandler(sys.stdout)
+_console.setFormatter(_formatter)
+_root.addHandler(_console)
+
+if settings.log_file:
+    _log_path = Path(__file__).resolve().parent.parent / settings.log_file
+    _log_path.parent.mkdir(parents=True, exist_ok=True)
+    _file = logging.handlers.RotatingFileHandler(
+        _log_path,
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5,
+        encoding="utf-8",
+    )
+    _file.setFormatter(_formatter)
+    _root.addHandler(_file)
+
 logging.getLogger("app").setLevel(logging.DEBUG)
 
 app = FastAPI(

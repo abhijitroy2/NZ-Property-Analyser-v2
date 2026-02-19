@@ -17,6 +17,8 @@ class Analysis(Base):
     # Stage 2: Deep analysis
     insurability = Column(JSON, nullable=True)
     image_analysis = Column(JSON, nullable=True)
+    vision_photos_hash = Column(String, nullable=True)  # Hash of photo URLs; reused when photos unchanged (saves OpenAI tokens)
+    subdivision_input_hash = Column(String, nullable=True)  # Hash of address/district/region/land_area; reused to save zone API + geocoding
     renovation_estimate = Column(JSON, nullable=True)
     timeline_estimate = Column(JSON, nullable=True)
     arv_estimate = Column(JSON, nullable=True)

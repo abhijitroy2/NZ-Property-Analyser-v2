@@ -14,15 +14,26 @@ TradeMe API → Data Ingestion → Filtering Pipeline → Scoring Engine → Fin
               - Stats NZ (population/growth)
               - Council APIs (rates, zoning)
               - Initio (insurance quotes)
-              - Google Vision API (image analysis)
+              - OpenAI / Anthropic / Google / Vertex (AI vision for image analysis)
 ```
 
-### 1.2 Processing Flow
-1. **Daily Batch Processing**: Pull new listings via TradeMe API
-2. **Stage 1 Filter**: Hard dealbreakers (instant rejection)
-3. **Stage 2 Analysis**: Deep dive on survivors
-4. **Stage 3 Scoring**: ROI calculation & ranking
-5. **Output**: Interactive dashboard with detailed breakdowns
+### 1.2 Analysis Mode (Fork)
+
+- **`legacy`** (default): Vision returns condition signals (`overall_reno_level`, `key_renovation_items`); `renovation.py` and `timeline.py` compute cost and weeks from rules.
+- **`openai_deep`**: Vision prompt returns `estimated_renovation_cost_nzd` and `estimated_timeline_weeks` directly; legacy modules skipped. Single vision call per listing.
+
+### 1.3 Caching (Cost Savings)
+
+- **Vision cache**: When re-analyzing, if `Analysis.vision_photos_hash` matches current photos, reuse cached `image_analysis` (skip OpenAI call).
+- **Subdivision cache**: When `Analysis.subdivision_input_hash` matches (address, district, region, land_area), reuse cached subdivision results (skip geocoding/zone API).
+
+### 1.4 Processing Flow
+1. **Scrape**: Pull new listings via TradeMe API (URLs from DB or `.env` TRADEME_SEARCH_URLS)
+2. **Stage 1 Filter**: Hard dealbreakers (price, title type, population)
+3. **Stage 2 Analysis**: Deep dive on survivors (vision, renovation, ARV, rent, rates, subdivision). Vision and subdivision use caches when inputs unchanged.
+4. **Stage 3 Financials**: Flip ROI, rental yield, strategy decision
+5. **Scoring**: Composite score, verdict, flags
+6. **Output**: Interactive dashboard with ranked results. Scheduled job can run daily (ENABLE_SCHEDULER) with rate limiting (VISION_RATE_LIMIT_DELAY_SECONDS) to avoid OpenAI 200k TPM.
 
 ---
 

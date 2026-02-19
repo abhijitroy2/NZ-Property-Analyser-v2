@@ -24,6 +24,27 @@ def get_db():
 def init_db():
     """Create all database tables."""
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
+
+
+def _run_migrations():
+    """Add new columns to existing tables (safe for SQLite)."""
+    from sqlalchemy import text
+
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(analyses)"))
+            columns = [row[1] for row in result]
+            if "vision_photos_hash" not in columns:
+                conn.execute(text("ALTER TABLE analyses ADD COLUMN vision_photos_hash VARCHAR"))
+                conn.commit()
+            if "subdivision_input_hash" not in columns:
+                conn.execute(text("ALTER TABLE analyses ADD COLUMN subdivision_input_hash VARCHAR"))
+                conn.commit()
+    except Exception:
+        pass  # Table may not exist yet (fresh install)
 
 
 def flush_db():

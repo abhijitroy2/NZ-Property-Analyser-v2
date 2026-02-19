@@ -88,14 +88,27 @@ All settings are managed via `backend/.env`. Key settings:
 | `TRADEME_SEARCH_URLS` | Comma-separated TradeMe search URLs to scrape | *(empty)* |
 | `MAX_PRICE` | Maximum property price filter | `500000` |
 | `MIN_POPULATION` | Minimum population in territorial authority | `50000` |
+| `ANALYSIS_MODE` | Analysis path: `legacy` (rule-based reno/timeline) or `openai_deep` (vision returns cost+timetable) | `legacy` |
 | `VISION_PROVIDER` | AI image analysis: `openai`, `anthropic`, or `mock` | `mock` |
 | `OPENAI_API_KEY` | OpenAI API key (for GPT-4V image analysis) | *(empty)* |
 | `ANTHROPIC_API_KEY` | Anthropic API key (for Claude Vision) | *(empty)* |
-| `ENABLE_SCHEDULER` | Auto-run pipeline daily | `false` |
+| `ENABLE_SCHEDULER` | Auto-run pipeline daily in background | `false` |
 | `SCHEDULER_HOUR` | Hour to run daily pipeline (24h) | `7` |
+| `VISION_RATE_LIMIT_DELAY_SECONDS` | Seconds between listings when using OpenAI vision (avoids 200k TPM) | `65` |
 | `SMTP_USERNAME` | Email username for alerts | *(empty)* |
 | `EMAIL_TO` | Email recipient for daily digests | *(empty)* |
 | `INSURANCE_PROVIDER` | Insurance quote provider: real or `mock` | `mock` |
+| `LOG_FILE` | Log file path (relative to backend/; empty to disable). Rotating, 5MB×5 backups | `logs/app.log` |
+
+### Scheduled Pipeline
+
+To run the pipeline daily in the background without hitting API rate limits:
+
+1. Set `ENABLE_SCHEDULER=true` in `.env`
+2. Set `VISION_RATE_LIMIT_DELAY_SECONDS=65` (or higher) when using `VISION_PROVIDER=openai`
+3. Keep the backend server running (e.g. `uvicorn app.main:app` or run as a Windows service)
+
+The scheduler runs at `SCHEDULER_HOUR:SCHEDULER_MINUTE` (default 7:00 AM). The rate-limit delay spaces out vision API calls to stay under OpenAI's 200k tokens/minute limit.
 
 ### Example TradeMe Search URLs
 
@@ -174,6 +187,34 @@ NZ Property Finder/
 4. **Stage 3 Financial Models** calculate flip ROI and rental yield
 5. **Scoring Engine** generates composite scores and assigns verdicts
 6. **Dashboard** presents ranked results with interactive scenario modeling
+
+## Design & Architecture
+
+### Analysis Mode (Fork)
+
+Two analysis paths for renovation and timeline:
+
+- **`legacy`** (default): Vision returns condition signals; `renovation.py` and `timeline.py` compute cost and weeks from rules.
+- **`openai_deep`**: Vision prompt returns `estimated_renovation_cost_nzd` and `estimated_timeline_weeks` directly; legacy modules are skipped. Use with `VISION_PROVIDER=openai`.
+
+### Cost-Saving Caches
+
+- **Vision cache**: Cached vision results reused when listing photos are unchanged (`Analysis.vision_photos_hash`).
+- **Subdivision cache**: Cached subdivision results reused when address/district/region/land_area are unchanged (`Analysis.subdivision_input_hash`).
+
+See [backend/docs/COST_SAVINGS_ARCHITECTURE.md](backend/docs/COST_SAVINGS_ARCHITECTURE.md) for details and future opportunities.
+
+### Logging & Token Tracking
+
+- Logs go to both console and `backend/logs/app.log` (rotating, 5MB×5 backups).
+- OpenAI token usage is logged per vision call: `OpenAI multi-image: prompt_tokens=X completion_tokens=Y total_tokens=Z`.
+- Search the log for `prompt_tokens` or `total_tokens` to track usage.
+
+### URL Sources for Scraping
+
+- **Primary**: Database `search_urls` table (managed in Settings).
+- **Fallback**: `TRADEME_SEARCH_URLS` in `.env` (comma-separated).
+- `input.txt` is written for external TM-scraper; the pipeline does not read from it.
 
 ## Notes
 

@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     max_price: int = 500000
     min_population: int = 50000
 
+    # Analysis mode: "legacy" (rule-based reno/timeline) | "openai_deep" (vision returns cost+timetable)
+    analysis_mode: str = "legacy"
+    openai_decision_reasoning: bool = False  # Optional LLM explanation; keep rule-based decision
+
     # AI Vision
     vision_provider: str = "mock"  # "openai", "anthropic", "google", "vertex", "mock"
     openai_api_key: Optional[str] = None
@@ -42,12 +46,18 @@ class Settings(BaseSettings):
     subdivision_use_council_rules: bool = True  # Use council zone APIs and rules when in scope
 
     # Scheduler
-    enable_scheduler: bool = False
-    scheduler_hour: int = 7
-    scheduler_minute: int = 0
+    enable_scheduler: bool = False  # Set true to run pipeline daily in background
+    scheduler_hour: int = 7  # Hour (24h) for daily run
+    scheduler_minute: int = 0  # Minute for daily run
+
+    # Vision rate limit: seconds to wait between listings when using OpenAI (avoids 200k TPM)
+    vision_rate_limit_delay_seconds: int = 65  # ~153k tokens/call; 65s keeps under 200k/min
 
     # CORS
     frontend_url: str = "http://localhost:3000"
+
+    # Logging
+    log_file: str = "logs/app.log"  # Path relative to backend dir; empty to disable file logging
 
     @property
     def search_urls(self) -> List[str]:

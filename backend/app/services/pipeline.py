@@ -3,14 +3,18 @@ Property Processing Pipeline.
 Orchestrates the full data pipeline: scrape -> filter -> analyze -> score.
 """
 
+import copy
+import hashlib
+import json
 import logging
+import time
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.listing import Listing
 from app.models.analysis import Analysis
+from app.models.listing import Listing
 
 from app.services.scraper.trademe import TradeMeScraper
 from app.services.filters.price_filter import filter_price, get_effective_asking_price
@@ -26,7 +30,7 @@ from app.services.analysis.rental import estimate_rental_income
 from app.services.analysis.subdivision import analyze_subdivision_potential
 from app.services.analysis.healthy_homes_text import assess_healthy_homes_from_text
 from app.services.external.council_api import CouncilAPIClient
-from app.services.external.vision_api import VisionAPIClient
+from app.services.external.vision_api import VisionAPIClient, vision_has_valid_reno_timeline
 
 from app.services.financial.flip_model import calculate_flip_financials
 from app.services.financial.rental_model import calculate_rental_financials
@@ -36,6 +40,38 @@ from app.services.scoring.scorer import calculate_composite_score
 from app.pipeline_status import set_running, update_progress, set_idle
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_photos_hash(photos: List[str]) -> str:
+    """Compute deterministic hash of photo URLs for cache invalidation."""
+    urls = (photos or [])[:6]  # Match vision API limit
+    return hashlib.sha256(json.dumps(sorted(urls), sort_keys=True).encode()).hexdigest()
+
+
+def _compute_subdivision_input_hash(listing_data: dict) -> str:
+    """Compute hash of subdivision inputs for cache invalidation."""
+    key = {
+        "address": listing_data.get("address", ""),
+        "district": listing_data.get("district", ""),
+        "region": listing_data.get("region", ""),
+        "land_area": listing_data.get("land_area"),
+    }
+    return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
+
+
+def _timeline_notes(weeks: int) -> str:
+    """Human-readable timeline notes for openai_deep mode."""
+    if weeks == 0:
+        return "No renovation required"
+    if weeks <= 4:
+        return "Quick turnaround - cosmetic work only"
+    if weeks <= 8:
+        return "Within 8-week target - manageable renovation"
+    if weeks <= 12:
+        return "Exceeds 8-week target - moderate complexity"
+    if weeks <= 16:
+        return "Significant renovation - plan for extended holding costs"
+    return "Major renovation - consider phased approach or adjust expectations"
 
 
 class PropertyPipeline:
@@ -115,6 +151,17 @@ class PropertyPipeline:
                     logger.error(f"Failed to analyze listing {listing.listing_id}: {e}")
                     listing.analysis_status = "failed"
                     self.db.commit()
+
+                # Rate limit: wait between listings when using OpenAI vision (avoids 200k TPM)
+                if (
+                    settings.vision_provider == "openai"
+                    and listing.filter_status == "passed"
+                    and i < len(pending) - 1
+                ):
+                    delay = getattr(settings, "vision_rate_limit_delay_seconds", 65)
+                    if delay > 0:
+                        logger.info(f"Rate limit: waiting {delay}s before next listing")
+                        time.sleep(delay)
         finally:
             if pending:
                 # Don't call set_idle here - run_full_pipeline will do it, or standalone analyze will
@@ -206,8 +253,18 @@ class PropertyPipeline:
         # Insurability
         insurability = check_insurability(listing_data)
 
-        # Image analysis
-        image_analysis = self.vision_client.analyze_listing_photos(listing.photos or [])
+        # Image analysis: reuse cached OpenAI/vision result when photos unchanged
+        photos_hash = _compute_photos_hash(listing.photos or [])
+        existing_analysis = self.db.query(Analysis).filter(Analysis.listing_id == listing.id).first()
+        if (
+            existing_analysis
+            and existing_analysis.image_analysis
+            and getattr(existing_analysis, "vision_photos_hash", None) == photos_hash
+        ):
+            image_analysis = copy.deepcopy(existing_analysis.image_analysis)
+            logger.info(f"Listing {listing.listing_id}: reusing cached vision (photos unchanged)")
+        else:
+            image_analysis = self.vision_client.analyze_listing_photos(listing.photos or [])
 
         # Healthy Homes (seller-claimed) signals from listing description
         # Stored alongside image analysis so downstream (reno estimate) can consider it
@@ -219,11 +276,29 @@ class PropertyPipeline:
             # Never break the pipeline for enrichment data
             pass
 
-        # Renovation estimate
-        renovation = estimate_renovation_cost(listing_data, image_analysis)
-
-        # Timeline
-        timeline = estimate_timeline(renovation)
+        # Renovation estimate and timeline: fork by analysis_mode
+        if (
+            settings.analysis_mode == "openai_deep"
+            and vision_has_valid_reno_timeline(image_analysis)
+        ):
+            cost = image_analysis.get("estimated_renovation_cost_nzd", 0)
+            weeks = image_analysis.get("estimated_timeline_weeks", 8)
+            renovation = {
+                "total_estimated": round(float(cost), 0),
+                "renovation_level": image_analysis.get("overall_reno_level", "MODERATE"),
+                "source": "openai_vision",
+                "key_items": image_analysis.get("key_renovation_items", []),
+            }
+            timeline = {
+                "estimated_weeks": int(weeks),
+                "within_8_week_target": int(weeks) <= 8,
+                "renovation_level": image_analysis.get("overall_reno_level", "MODERATE"),
+                "notes": _timeline_notes(int(weeks)),
+                "source": "openai_vision",
+            }
+        else:
+            renovation = estimate_renovation_cost(listing_data, image_analysis)
+            timeline = estimate_timeline(renovation)
 
         # ARV
         arv = estimate_arv(
@@ -244,20 +319,31 @@ class PropertyPipeline:
             listing.district or "",
         )
 
-        # Subdivision potential
-        subdivision = analyze_subdivision_potential(listing_data)
+        # Subdivision potential: reuse cached result when location/land unchanged (saves geocoding + zone API)
+        subdiv_hash = _compute_subdivision_input_hash(listing_data)
+        if (
+            existing_analysis
+            and existing_analysis.subdivision_analysis
+            and getattr(existing_analysis, "subdivision_input_hash", None) == subdiv_hash
+        ):
+            subdivision = copy.deepcopy(existing_analysis.subdivision_analysis)
+            logger.info(f"Listing {listing.listing_id}: reusing cached subdivision analysis")
+        else:
+            subdivision = analyze_subdivision_potential(listing_data)
 
         return {
             "population": population_data,
             "demand_profile": demand_profile,
             "insurability": insurability,
             "image_analysis": image_analysis,
+            "vision_photos_hash": photos_hash,
             "renovation": renovation,
             "timeline": timeline,
             "arv": arv,
             "rental_income": rental_income,
             "council_rates": council_rates,
             "subdivision": subdivision,
+            "subdivision_input_hash": subdiv_hash,
         }
 
     def _run_stage3_financials(self, listing: Listing, analysis: dict) -> dict:
@@ -305,6 +391,8 @@ class PropertyPipeline:
         # Stage 2
         db_analysis.insurability = analysis["insurability"]
         db_analysis.image_analysis = analysis["image_analysis"]
+        db_analysis.vision_photos_hash = analysis.get("vision_photos_hash")
+        db_analysis.subdivision_input_hash = analysis.get("subdivision_input_hash")
         db_analysis.renovation_estimate = analysis["renovation"]
         db_analysis.timeline_estimate = analysis["timeline"]
         db_analysis.arv_estimate = analysis["arv"]

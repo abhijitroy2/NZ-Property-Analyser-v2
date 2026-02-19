@@ -57,7 +57,10 @@ Individual photo analyses:
 """
 
 # Single-call multi-image prompt (OpenAI only) — combines per-photo and summary in one request
-MULTI_IMAGE_PROMPT = """You are analyzing property listing photos for renovation assessment (NZ context). These {n} photos show different views of the property. Return a single JSON object with these required fields:
+# When analysis_mode=openai_deep, estimated_renovation_cost_nzd and estimated_timeline_weeks are used
+MULTI_IMAGE_PROMPT = """You are assessing a NZ residential property for an investor. Budget target ~$500k purchase. Preferred renovation timeline ≤8 weeks.
+
+These {n} photos show different views of the property. Return a single JSON object with these required fields:
 
 {{
   "roof_condition": "NEW_IRON" | "OLD_IRON" | "TILES" | "NEEDS_REPLACE" | "UNKNOWN",
@@ -68,12 +71,41 @@ MULTI_IMAGE_PROMPT = """You are analyzing property listing photos for renovation
   "structural_concerns": ["list of visible structural issues if any"],
   "overall_reno_level": "NONE" | "COSMETIC" | "MODERATE" | "MAJOR" | "FULL_GUT",
   "key_renovation_items": ["list of main renovation tasks needed"],
-  "confidence": "HIGH" | "MEDIUM" | "LOW"
+  "confidence": "HIGH" | "MEDIUM" | "LOW",
+  "estimated_renovation_cost_nzd": 0,
+  "estimated_timeline_weeks": 0
 }}
+
+Costs in NZD. Use typical NZ 2025 rates: cosmetic ~$500/sqm; moderate kitchen/bath refresh ~$1200/sqm; major ~$2000/sqm; full gut ~$3500/sqm. Add contingency ~15%. Est. floor area from photos: 3-bed ~110sqm, 4-bed ~140sqm.
+Timeline: NONE=0, COSMETIC=2, MODERATE=6, MAJOR=12, FULL_GUT=20 weeks. Roof replacement adds ~2 weeks.
+Be conservative: unseen issues (insulation, consent) not visible in photos. Prefer slightly higher cost/longer timeline when uncertain.
 
 Optionally include: flip_plan (list), rental_minimum_plan (list), healthy_homes_risks_visible (list), due_diligence_checks (list).
 
-Be specific and practical. Focus on renovation-relevant details. Return only valid JSON, no markdown."""
+Return only valid JSON, no markdown."""
+
+
+def vision_has_valid_reno_timeline(vision_output: Dict[str, Any]) -> bool:
+    """
+    Check if vision output has valid estimated_renovation_cost_nzd and estimated_timeline_weeks
+    for use in analysis_mode=openai_deep. Returns False if either missing, negative, or absurd.
+    """
+    if not vision_output or not isinstance(vision_output, dict):
+        return False
+    cost = vision_output.get("estimated_renovation_cost_nzd")
+    weeks = vision_output.get("estimated_timeline_weeks")
+    if cost is None or weeks is None:
+        return False
+    try:
+        cost_val = float(cost)
+        weeks_val = int(weeks)
+    except (TypeError, ValueError):
+        return False
+    if cost_val < 0 or cost_val > 500000:
+        return False
+    if weeks_val < 0 or weeks_val > 52:
+        return False
+    return True
 
 
 def _extract_json_from_response(text: str) -> Optional[Dict[str, Any]]:
