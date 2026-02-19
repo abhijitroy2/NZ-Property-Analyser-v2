@@ -24,11 +24,41 @@ def _parse_capital_value(cv: str) -> Optional[float]:
     return None
 
 
+def _parse_market_estimate(est_str: str) -> Optional[float]:
+    """
+    Parse TradeMe estimated market price (e.g. '$530K - $565K' or '$450,000') to float.
+    Handles K suffix (thousands). Returns midpoint for ranges.
+    """
+    if not est_str or not est_str.strip():
+        return None
+    text = est_str.strip()
+    values = []
+    # Match $530K or 530K (thousands) or $450,000 (full number)
+    for m in re.finditer(r"\$?\s*([\d,]+)\s*[Kk]?", text):
+        num_str = m.group(1).replace(",", "")
+        if not num_str:
+            continue
+        try:
+            val = float(num_str)
+            # Check if K follows the number (e.g. 530K = 530000)
+            end = m.end(1)
+            if end < len(text) and text[end : end + 1].upper() == "K":
+                val *= 1000
+            elif val < 1000:
+                val *= 1000
+            if val >= 10000:
+                values.append(val)
+        except ValueError:
+            continue
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
 def get_effective_asking_price(listing) -> Optional[float]:
     """
     Return the effective purchase price for financial modelling.
-    Uses asking_price when available; otherwise falls back to parsed capital_value.
-    Matches the logic used in filter_price for budget checks.
+    Priority: asking_price -> capital_value -> estimated_market_price.
     """
     if listing.asking_price is not None and listing.asking_price > 0:
         return float(listing.asking_price)
@@ -39,26 +69,29 @@ def get_effective_asking_price(listing) -> Optional[float]:
                 f"Listing {listing.listing_id}: Using capital value ${cv_val:,.0f} (asking_price not set)"
             )
             return cv_val
+    if listing.estimated_market_price:
+        emp_val = _parse_market_estimate(listing.estimated_market_price)
+        if emp_val is not None:
+            logger.debug(
+                f"Listing {listing.listing_id}: Using estimated market price ${emp_val:,.0f}"
+            )
+            return emp_val
     return None
 
 
 def filter_price(listing) -> Tuple[str, str]:
     """
     Max budget filter. Rejects listings over the configured max price.
-    When display_price is non-dollar (deadline sale, auction, price by negotiation, etc.),
-    asking_price will be None; in that case we fall back to capital_value.
+    Fallback order: asking_price -> capital_value -> estimated_market_price.
     """
     max_price = settings.max_price
-    asking_price = listing.asking_price
-
-    if asking_price is None and listing.capital_value:
-        asking_price = _parse_capital_value(listing.capital_value)
-        if asking_price is not None:
-            logger.info(f"Listing {listing.listing_id}: No asking price ('{listing.display_price}'), using capital value ${asking_price:,.0f}")
+    asking_price = get_effective_asking_price(listing)
 
     if asking_price is None:
-        # If we can't determine price from either source, let it through for manual review
-        logger.info(f"Listing {listing.listing_id}: No parseable price ('{listing.display_price}', CV: '{listing.capital_value}'), passing for manual review")
+        logger.info(
+            f"Listing {listing.listing_id}: No parseable price "
+            f"('{listing.display_price}', CV: '{listing.capital_value}', est: '{listing.estimated_market_price}'), passing for manual review"
+        )
         return PASS, ""
 
     if asking_price > max_price:

@@ -45,12 +45,13 @@ def estimate_rental_income(
     # Source 2: TradeMe estimated rent
     tm_rent = parse_trademe_rent_estimate(trademe_rent_estimate)
 
-    # Determine best estimate: take the HIGHER of tenancy CSV and TradeMe when both available
+    # Blend tenancy (district median) and TradeMe (property-specific) when both available.
+    # Use midpoint to avoid overestimating: tenancy is TLA-level, TradeMe is property-specific.
     tenancy_rent = tenancy_data.get("estimated_weekly_rent")
 
     if tenancy_rent and tm_rent:
-        weekly_rent = max(tenancy_rent, tm_rent)
-        source = "tenancy_csv_and_trademe_higher"
+        weekly_rent = (tenancy_rent + tm_rent) / 2
+        source = "tenancy_csv_and_trademe_midpoint"
     elif tenancy_rent:
         weekly_rent = tenancy_rent
         source = "tenancy_csv"

@@ -202,8 +202,14 @@ export default function PropertyDetailPage() {
         <Card>
           <CardContent className="p-5 text-center">
             <p className="text-sm text-[var(--muted-foreground)]">Est. Weekly Rent</p>
-            <p className="text-2xl font-bold">{listing.estimated_weekly_rent || "N/A"}</p>
-            {rentalEst && <p className="text-xs text-[var(--muted-foreground)]">Source: {rentalEst.source}</p>}
+            <p className="text-2xl font-bold">
+              {rentalEst?.estimated_weekly_rent != null
+                ? formatCurrency(rentalEst.estimated_weekly_rent)
+                : listing.estimated_weekly_rent || "N/A"}
+            </p>
+            {rentalEst && (
+              <p className="text-xs text-[var(--muted-foreground)]">Source: {rentalEst.source}</p>
+            )}
           </CardContent>
         </Card>
       </div>
